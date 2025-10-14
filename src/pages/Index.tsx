@@ -1,12 +1,26 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+import BookingHeader from "@/components/BookingHeader";
+import Calendar from "@/components/Calendar";
+import BookingForm from "@/components/BookingForm";
 
 const Index = () => {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
-      <div className="text-center">
-        <h1 className="mb-4 text-4xl font-bold">Welcome to Your Blank App</h1>
-        <p className="text-xl text-muted-foreground">Start building your amazing project here!</p>
-      </div>
+    <div className="min-h-screen flex flex-col bg-background">
+      <BookingHeader />
+      
+      <main className="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-2">
+            <Calendar />
+          </div>
+          <div>
+            <BookingForm />
+          </div>
+        </div>
+      </main>
+
+      <footer className="text-center text-xs text-muted-foreground py-6 mt-8">
+        © 2025 Ingwelala • Internal booking system • Sibon capacity 16
+      </footer>
     </div>
   );
 };
