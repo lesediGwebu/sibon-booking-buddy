@@ -19,7 +19,7 @@ const Index = () => {
       </main>
 
       <footer className="text-center text-xs text-muted-foreground py-6 mt-8">
-        © 2025 Ingwelala • Internal booking system • Sibon capacity 16
+        © 2025 Ingwelala • Internal booking system • Capacity 16
       </footer>
     </div>
   );

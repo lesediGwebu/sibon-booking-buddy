@@ -16,7 +16,7 @@ const BookingHeader = () => {
               <span className="font-bold text-xl">S</span>
             </div>
             <div>
-              <h1 className="text-2xl md:text-3xl font-bold">Sibon (Ingwelala) Booking</h1>
+              <h1 className="text-2xl md:text-3xl font-bold">Ingwelala Booking</h1>
               <p className="text-sm md:text-base opacity-90">Max capacity: 16 guests</p>
             </div>
           </div>
