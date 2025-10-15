@@ -8,11 +8,11 @@ const Index = () => {
       <BookingHeader />
       
       <main className="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 lg:items-stretch">
+          <div className="lg:col-span-2 flex">
             <Calendar />
           </div>
-          <div>
+          <div className="flex">
             <BookingForm />
           </div>
         </div>

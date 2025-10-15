@@ -17,7 +17,7 @@ const BookingForm = () => {
   };
 
   return (
-    <div className="bg-card p-6 rounded-lg shadow-md h-fit">
+    <div className="bg-card p-6 rounded-lg shadow-md w-full flex flex-col">
       <h2 className="text-xl font-semibold mb-6">Book Ingwelala</h2>
       
       <form onSubmit={handleSubmit} className="space-y-6">

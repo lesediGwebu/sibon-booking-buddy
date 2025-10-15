@@ -12,9 +12,11 @@ const BookingHeader = () => {
       <div className="relative z-10 max-w-7xl mx-auto">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div className="flex items-center space-x-4">
-            <div className="p-3 rounded-full bg-hero-brown">
-              <span className="font-bold text-xl">S</span>
-            </div>
+            <img 
+              src="/ingwelala-logo.jpeg" 
+              alt="Ingwelala Logo" 
+              className="h-14 w-14 md:h-16 md:w-16 rounded-lg bg-white p-1 object-contain"
+            />
             <div>
               <h1 className="text-2xl md:text-3xl font-bold">Ingwelala Booking</h1>
               <p className="text-sm md:text-base opacity-90">Max capacity: 16 guests</p>

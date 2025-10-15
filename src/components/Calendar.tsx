@@ -70,7 +70,7 @@ const Calendar = () => {
   };
 
   return (
-    <div className="bg-card p-6 rounded-lg shadow-md">
+    <div className="bg-card p-6 rounded-lg shadow-md w-full flex flex-col">
       <div className="flex justify-between items-center mb-6">
         <div>
           <h2 className="text-xl font-semibold">Availability</h2>

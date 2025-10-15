@@ -71,9 +71,11 @@ const SignUp = () => {
         
         <div className="relative z-10 max-w-md">
           <div className="flex items-center space-x-3 mb-6">
-            <div className="p-3 rounded-full bg-white/20 backdrop-blur-sm">
-              <span className="font-bold text-2xl">I</span>
-            </div>
+            <img 
+              src="/ingwelala-logo.jpeg" 
+              alt="Ingwelala Logo" 
+              className="h-16 w-16 rounded-lg object-contain"
+            />
             <h1 className="text-3xl font-bold">Ingwelala</h1>
           </div>
           

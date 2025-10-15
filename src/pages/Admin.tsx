@@ -257,9 +257,16 @@ const Admin = () => {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="bg-hero-brown text-white p-6 shadow-lg">
-        <div className="max-w-7xl mx-auto">
-          <h1 className="text-3xl font-bold">Admin Dashboard</h1>
-          <p className="text-sm opacity-90 mt-1">Manage bookings and availability for Ingwelala</p>
+        <div className="max-w-7xl mx-auto flex items-center space-x-4">
+          <img 
+            src="/ingwelala-logo.jpeg" 
+            alt="Ingwelala Logo" 
+            className="h-14 w-14 rounded-lg bg-white p-1 object-contain"
+          />
+          <div>
+            <h1 className="text-3xl font-bold">Admin Dashboard</h1>
+            <p className="text-sm opacity-90 mt-1">Manage bookings and availability for Ingwelala</p>
+          </div>
         </div>
       </header>
 
