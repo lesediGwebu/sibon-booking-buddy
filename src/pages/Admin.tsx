@@ -1,149 +1,98 @@
-import { useState } from "react";
-import { Calendar, Users, CheckCircle, XCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, Lock, Unlock } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Calendar as CalendarIcon, Users, CheckCircle, XCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-
-interface Booking {
-  id: string;
-  guestName: string;
-  email: string;
-  checkIn: string;
-  checkOut: string;
-  guests: number;
-  status: "pending" | "approved" | "rejected";
-  notes?: string;
-}
-
-interface DateAvailability {
-  date: string;
-  available: number;
-  blocked: boolean;
-}
+import { useMutation, useQuery } from "convex/react";
+import { api } from "../../convex/_generated/api";
+import type { Doc, Id } from "../../convex/_generated/dataModel";
 
 const Admin = () => {
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+  const [selectedBooking, setSelectedBooking] = useState<Doc<"bookings"> | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isCalendarDialogOpen, setIsCalendarDialogOpen] = useState(false);
-  const [maxCapacity, setMaxCapacity] = useState(16);
   const [currentMonth, setCurrentMonth] = useState(new Date(2025, 10)); // November 2025
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [editCapacity, setEditCapacity] = useState<number>(16);
+  const [maxCapacityLocal, setMaxCapacityLocal] = useState<number>(16);
 
-  // Calendar availability data
-  const [availability, setAvailability] = useState<Record<string, DateAvailability>>({
-    "2025-11-01": { date: "2025-11-01", available: 0, blocked: true },
-    "2025-11-02": { date: "2025-11-02", available: 16, blocked: false },
-    "2025-11-03": { date: "2025-11-03", available: 16, blocked: false },
-    "2025-11-04": { date: "2025-11-04", available: 8, blocked: false },
-    "2025-11-05": { date: "2025-11-05", available: 8, blocked: false },
+  // Queries
+  const settings = useQuery(api.availability.getSettings, {});
+  const bookings = useQuery(api.bookings.list, {});
+  const monthAvail = useQuery(api.availability.getMonthAvailability, {
+    year: currentMonth.getFullYear(),
+    month: currentMonth.getMonth() + 1,
   });
 
-  // Mock booking data
-  const [bookings, setBookings] = useState<Booking[]>([
-    {
-      id: "1",
-      guestName: "John Doe",
-      email: "john@example.com",
-      checkIn: "2025-11-02",
-      checkOut: "2025-11-05",
-      guests: 8,
-      status: "pending",
-      notes: "Late arrival expected",
-    },
-    {
-      id: "2",
-      guestName: "Jane Smith",
-      email: "jane@example.com",
-      checkIn: "2025-11-10",
-      checkOut: "2025-11-14",
-      guests: 12,
-      status: "approved",
-    },
-    {
-      id: "3",
-      guestName: "Bob Wilson",
-      email: "bob@example.com",
-      checkIn: "2025-11-15",
-      checkOut: "2025-11-18",
-      guests: 6,
-      status: "pending",
-      notes: "Special dietary requirements",
-    },
-  ]);
+  // Mutations
+  const approve = useMutation(api.bookings.updateStatus);
+  const updateBooking = useMutation(api.bookings.updateBooking);
+  const removeBooking = useMutation(api.bookings.remove);
+  const setMaxCapacity = useMutation(api.availability.setMaxCapacity);
+  const setDateAvailability = useMutation(api.availability.setDateAvailability);
 
-  const filteredBookings = bookings.filter(
-    (booking) =>
-      booking.guestName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      booking.email.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const [adminKey, setAdminKeyLocal] = useState<string | null>(localStorage.getItem("adminKey"));
 
-  const handleApprove = (id: string) => {
-    setBookings((prev) =>
-      prev.map((booking) =>
-        booking.id === id ? { ...booking, status: "approved" as const } : booking
-      )
-    );
+  const isConfigured = useQuery(api.admin.isConfigured, {});
+  const setAdminKeyMutation = useMutation(api.admin.setAdminKey);
+
+  const maxCapacity = settings?.maxCapacity ?? 16;
+
+  // Sync local max capacity display
+  if (maxCapacityLocal !== maxCapacity) {
+    // keep input in sync without causing render loops by checking inequality
+    setTimeout(() => setMaxCapacityLocal(maxCapacity), 0);
+  }
+
+  const availability = useMemo(() => monthAvail ?? {}, [monthAvail]);
+
+  const filteredBookings = (bookings ?? []).filter((booking) => {
+    const name = booking.userName ?? "";
+    const email = booking.userEmail ?? "";
+    return name.toLowerCase().includes(searchTerm.toLowerCase()) || email.toLowerCase().includes(searchTerm.toLowerCase());
+  });
+
+  const handleApprove = async (id: Id<"bookings">) => {
+    await approve({ id, status: "approved", adminKey: adminKey ?? undefined });
     toast.success("Booking approved successfully");
   };
 
-  const handleReject = (id: string) => {
-    setBookings((prev) =>
-      prev.map((booking) =>
-        booking.id === id ? { ...booking, status: "rejected" as const } : booking
-      )
-    );
+  const handleReject = async (id: Id<"bookings">) => {
+    await approve({ id, status: "rejected", adminKey: adminKey ?? undefined });
     toast.success("Booking rejected");
   };
 
-  const handleDelete = (id: string) => {
-    setBookings((prev) => prev.filter((booking) => booking.id !== id));
+  const handleDelete = async (id: Id<"bookings">) => {
+    await removeBooking({ id, adminKey: adminKey ?? undefined });
     toast.success("Booking deleted");
   };
 
-  const handleEditBooking = (booking: Booking) => {
+const handleEditBooking = (booking: Doc<"bookings">) => {
     setSelectedBooking(booking);
     setIsEditDialogOpen(true);
   };
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     if (selectedBooking) {
-      setBookings((prev) =>
-        prev.map((booking) =>
-          booking.id === selectedBooking.id ? selectedBooking : booking
-        )
-      );
+      await updateBooking({
+        id: selectedBooking._id,
+        checkIn: selectedBooking.checkIn,
+        checkOut: selectedBooking.checkOut,
+        guests: selectedBooking.guests,
+        notes: selectedBooking.notes,
+        adminKey: adminKey ?? undefined,
+      });
       toast.success("Booking updated successfully");
       setIsEditDialogOpen(false);
     }
   };
 
-  const getStatusBadge = (status: Booking["status"]) => {
+  const getStatusBadge = (status: "pending" | "approved" | "rejected") => {
     switch (status) {
       case "approved":
         return (
@@ -162,15 +111,15 @@ const Admin = () => {
       case "pending":
         return (
           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-accent/30 text-accent-foreground">
-            <Calendar className="w-3 h-3 mr-1" />
+            <CalendarIcon className="w-3 h-3 mr-1" />
             Pending
           </span>
         );
     }
   };
 
-  const pendingCount = bookings.filter((b) => b.status === "pending").length;
-  const approvedCount = bookings.filter((b) => b.status === "approved").length;
+  const pendingCount = (bookings ?? []).filter((b) => b.status === "pending").length;
+  const approvedCount = (bookings ?? []).filter((b) => b.status === "approved").length;
 
   // Calendar functions
   const generateCalendarDays = () => {
@@ -180,9 +129,9 @@ const Admin = () => {
     const lastDay = new Date(year, month + 1, 0);
     const daysInMonth = lastDay.getDate();
     const startingDayOfWeek = firstDay.getDay();
-    
+
     const days: Array<{ date: string; day: number; isCurrentMonth: boolean }> = [];
-    
+
     // Previous month days
     const prevMonthLastDay = new Date(year, month, 0).getDate();
     for (let i = startingDayOfWeek - 1; i >= 0; i--) {
@@ -192,7 +141,7 @@ const Admin = () => {
         isCurrentMonth: false,
       });
     }
-    
+
     // Current month days
     for (let day = 1; day <= daysInMonth; day++) {
       const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
@@ -202,7 +151,7 @@ const Admin = () => {
         isCurrentMonth: true,
       });
     }
-    
+
     return days;
   };
 
@@ -216,53 +165,34 @@ const Admin = () => {
 
   const handleDateClick = (dateStr: string) => {
     setSelectedDate(dateStr);
-    const dateAvail = availability[dateStr] || { date: dateStr, available: maxCapacity, blocked: false };
+    const dateAvail = availability[dateStr] || { available: maxCapacity, blocked: false };
     setEditCapacity(dateAvail.available);
     setIsCalendarDialogOpen(true);
   };
 
-  const handleSaveAvailability = () => {
+  const handleSaveAvailability = async () => {
     if (selectedDate) {
-      setAvailability((prev) => ({
-        ...prev,
-        [selectedDate]: {
-          date: selectedDate,
-          available: editCapacity,
-          blocked: editCapacity === 0,
-        },
-      }));
+      await setDateAvailability({ date: selectedDate, available: editCapacity, adminKey: adminKey ?? undefined });
       toast.success("Availability updated");
       setIsCalendarDialogOpen(false);
     }
   };
 
-  const handleBlockDate = () => {
+  const handleBlockDate = async () => {
     if (selectedDate) {
-      setAvailability((prev) => ({
-        ...prev,
-        [selectedDate]: {
-          date: selectedDate,
-          available: 0,
-          blocked: true,
-        },
-      }));
+      await setDateAvailability({ date: selectedDate, available: 0, adminKey: adminKey ?? undefined });
       toast.success("Date blocked");
       setIsCalendarDialogOpen(false);
     }
   };
 
-  const calendarDays = generateCalendarDays();
 
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="bg-hero-brown text-white p-6 shadow-lg">
         <div className="max-w-7xl mx-auto flex items-center space-x-4">
-          <img 
-            src="/ingwelala-logo.jpeg" 
-            alt="Ingwelala Logo" 
-            className="h-14 w-14 rounded-lg bg-white p-1 object-contain"
-          />
+          <img src="/ingwelala-logo.jpeg" alt="Ingwelala Logo" className="h-14 w-14 rounded-lg bg-white p-1 object-contain" />
           <div>
             <h1 className="text-3xl font-bold">Admin Dashboard</h1>
             <p className="text-sm opacity-90 mt-1">Manage bookings and availability for Ingwelala</p>
@@ -271,6 +201,45 @@ const Admin = () => {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Admin key prompt */}
+        <div className="mb-4 bg-card p-4 rounded-md border">
+          {isConfigured ? (
+            <div className="flex gap-2 items-center">
+              <input
+                type="password"
+                placeholder="Enter admin key"
+                className="border rounded px-3 py-2 w-64"
+                onChange={(e) => setAdminKeyLocal(e.target.value)}
+              />
+              <Button
+                onClick={() => {
+                  if (adminKey) localStorage.setItem("adminKey", adminKey);
+                  toast.success("Admin key set locally");
+                }}
+              >
+                Save
+              </Button>
+            </div>
+          ) : (
+            <div className="flex gap-2 items-center">
+              <input
+                type="password"
+                placeholder="Set new admin key"
+                className="border rounded px-3 py-2 w-64"
+                onChange={(e) => setAdminKeyLocal(e.target.value)}
+              />
+              <Button
+                onClick={async () => {
+                  if (!adminKey) return;
+                  await setAdminKeyMutation({ adminKey });
+                  toast.success("Admin key configured");
+                }}
+              >
+                Configure
+              </Button>
+            </div>
+          )}
+        </div>
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <div className="bg-card p-6 rounded-lg shadow-md border-l-4 border-accent">
@@ -279,7 +248,7 @@ const Admin = () => {
                 <p className="text-sm text-muted-foreground">Pending Requests</p>
                 <p className="text-3xl font-bold mt-1">{pendingCount}</p>
               </div>
-              <Calendar className="h-10 w-10 text-accent" />
+              <CalendarIcon className="h-10 w-10 text-accent" />
             </div>
           </div>
 
@@ -300,8 +269,9 @@ const Admin = () => {
                 <div className="flex items-center gap-2 mt-1">
                   <Input
                     type="number"
-                    value={maxCapacity}
-                    onChange={(e) => setMaxCapacity(parseInt(e.target.value))}
+                    value={maxCapacityLocal}
+                    onChange={(e) => setMaxCapacityLocal(parseInt(e.target.value) || 0)}
+                    onBlur={(e) => setMaxCapacity({ maxCapacity: parseInt((e.target as HTMLInputElement).value) || 0, adminKey: adminKey ?? undefined })}
                     className="w-20 h-10 text-xl font-bold"
                     min="1"
                     max="50"
@@ -322,23 +292,13 @@ const Admin = () => {
               <p className="text-sm text-muted-foreground mt-1">Click on any date to adjust availability</p>
             </div>
             <div className="flex items-center space-x-2">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="rounded-full"
-                onClick={handlePreviousMonth}
-              >
+              <Button variant="ghost" size="icon" className="rounded-full" onClick={handlePreviousMonth}>
                 <ChevronLeft className="h-5 w-5" />
               </Button>
               <span className="font-semibold text-lg px-4">
                 {currentMonth.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
               </span>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="rounded-full"
-                onClick={handleNextMonth}
-              >
+              <Button variant="ghost" size="icon" className="rounded-full" onClick={handleNextMonth}>
                 <ChevronRight className="h-5 w-5" />
               </Button>
             </div>
@@ -355,7 +315,7 @@ const Admin = () => {
           </div>
 
           <div className="grid grid-cols-7 gap-2">
-            {calendarDays.map((day, index) => {
+            {generateCalendarDays().map((day, index) => {
               if (!day.isCurrentMonth) {
                 return (
                   <div key={index} className="p-2 text-center text-muted-foreground">
@@ -450,10 +410,10 @@ const Admin = () => {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredBookings.map((booking) => (
-                    <TableRow key={booking.id}>
-                      <TableCell className="font-medium">{booking.guestName}</TableCell>
-                      <TableCell>{booking.email}</TableCell>
+filteredBookings.map((booking: Doc<"bookings">) => (
+                    <TableRow key={booking._id}>
+                      <TableCell className="font-medium">{booking.userName ?? "-"}</TableCell>
+                      <TableCell>{booking.userEmail ?? "-"}</TableCell>
                       <TableCell>{new Date(booking.checkIn).toLocaleDateString()}</TableCell>
                       <TableCell>{new Date(booking.checkOut).toLocaleDateString()}</TableCell>
                       <TableCell>{booking.guests}</TableCell>
@@ -465,7 +425,7 @@ const Admin = () => {
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                onClick={() => handleApprove(booking.id)}
+                                onClick={() => handleApprove(booking._id)}
                                 className="text-available-foreground hover:text-available-foreground hover:bg-available/20"
                               >
                                 <CheckCircle className="h-4 w-4" />
@@ -473,25 +433,20 @@ const Admin = () => {
                               <Button
                                 size="sm"
                                 variant="ghost"
-                                onClick={() => handleReject(booking.id)}
+                                onClick={() => handleReject(booking._id)}
                                 className="text-destructive hover:text-destructive hover:bg-destructive/10"
                               >
                                 <XCircle className="h-4 w-4" />
                               </Button>
                             </>
                           )}
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleEditBooking(booking)}
-                            className="hover:bg-secondary"
-                          >
+                          <Button size="sm" variant="ghost" onClick={() => handleEditBooking(booking)} className="hover:bg-secondary">
                             <Edit className="h-4 w-4" />
                           </Button>
                           <Button
                             size="sm"
                             variant="ghost"
-                            onClick={() => handleDelete(booking.id)}
+                            onClick={() => handleDelete(booking._id)}
                             className="text-destructive hover:text-destructive hover:bg-destructive/10"
                           >
                             <Trash2 className="h-4 w-4" />
@@ -535,11 +490,7 @@ const Admin = () => {
             </div>
           </div>
           <DialogFooter className="flex-col sm:flex-row gap-2">
-            <Button
-              variant="destructive"
-              onClick={handleBlockDate}
-              className="w-full sm:w-auto"
-            >
+            <Button variant="destructive" onClick={handleBlockDate} className="w-full sm:w-auto">
               <Lock className="h-4 w-4 mr-2" />
               Block Date
             </Button>
@@ -564,27 +515,6 @@ const Admin = () => {
           </DialogHeader>
           {selectedBooking && (
             <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-name">Guest Name</Label>
-                <Input
-                  id="edit-name"
-                  value={selectedBooking.guestName}
-                  onChange={(e) =>
-                    setSelectedBooking({ ...selectedBooking, guestName: e.target.value })
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-email">Email</Label>
-                <Input
-                  id="edit-email"
-                  type="email"
-                  value={selectedBooking.email}
-                  onChange={(e) =>
-                    setSelectedBooking({ ...selectedBooking, email: e.target.value })
-                  }
-                />
-              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="edit-checkin">Check-in</Label>
@@ -592,9 +522,7 @@ const Admin = () => {
                     id="edit-checkin"
                     type="date"
                     value={selectedBooking.checkIn}
-                    onChange={(e) =>
-                      setSelectedBooking({ ...selectedBooking, checkIn: e.target.value })
-                    }
+                    onChange={(e) => setSelectedBooking({ ...selectedBooking, checkIn: e.target.value })}
                   />
                 </div>
                 <div className="space-y-2">
@@ -603,9 +531,7 @@ const Admin = () => {
                     id="edit-checkout"
                     type="date"
                     value={selectedBooking.checkOut}
-                    onChange={(e) =>
-                      setSelectedBooking({ ...selectedBooking, checkOut: e.target.value })
-                    }
+                    onChange={(e) => setSelectedBooking({ ...selectedBooking, checkOut: e.target.value })}
                   />
                 </div>
               </div>
@@ -615,30 +541,10 @@ const Admin = () => {
                   id="edit-guests"
                   type="number"
                   value={selectedBooking.guests}
-                  onChange={(e) =>
-                    setSelectedBooking({ ...selectedBooking, guests: parseInt(e.target.value) })
-                  }
+                  onChange={(e) => setSelectedBooking({ ...selectedBooking, guests: parseInt(e.target.value) })}
                   min="1"
                   max={maxCapacity}
                 />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-status">Status</Label>
-                <Select
-                  value={selectedBooking.status}
-                  onValueChange={(value: Booking["status"]) =>
-                    setSelectedBooking({ ...selectedBooking, status: value })
-                  }
-                >
-                  <SelectTrigger id="edit-status">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="pending">Pending</SelectItem>
-                    <SelectItem value="approved">Approved</SelectItem>
-                    <SelectItem value="rejected">Rejected</SelectItem>
-                  </SelectContent>
-                </Select>
               </div>
             </div>
           )}
