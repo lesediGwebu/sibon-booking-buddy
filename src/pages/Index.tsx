@@ -15,11 +15,14 @@ const Index = () => {
   const avail = useQuery(api.availability.getMonthAvailability, { year, month });
 
   const availabilityByDay = useMemo(() => {
-    const map: Record<number, number> = {};
+    const map: Record<number, { available: number; seasonType?: "peak" | "offpeak" }> = {};
     if (avail) {
       Object.entries(avail).forEach(([date, value]) => {
         const day = Number(date.split("-")[2]);
-        map[day] = value.available;
+        map[day] = { 
+          available: value.available,
+          seasonType: value.seasonType 
+        };
       });
     }
     return map;

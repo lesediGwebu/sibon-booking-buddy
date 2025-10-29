@@ -1,4 +1,5 @@
 import { mutation, query } from "./_generated/server";
+import { v } from "convex/values";
 
 export const isConfigured = query({
   args: {},
@@ -12,7 +13,7 @@ export const isConfigured = query({
 });
 
 export const setAdminKey = mutation({
-  args: { adminKey: (await import("convex/values")).v.string() },
+  args: { adminKey: v.string() },
   handler: async (ctx, { adminKey }) => {
     const existing = await ctx.db
       .query("settings")
@@ -28,7 +29,7 @@ export const setAdminKey = mutation({
 });
 
 export const verifyAdminKey = query({
-  args: { adminKey: (await import("convex/values")).v.string() },
+  args: { adminKey: v.string() },
   handler: async (ctx, { adminKey }) => {
     const settings = await ctx.db
       .query("settings")

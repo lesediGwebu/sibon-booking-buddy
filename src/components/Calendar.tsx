@@ -6,6 +6,7 @@ interface DateInfo {
   date: number;
   available: number;
   isCurrentMonth: boolean;
+  seasonType?: "peak" | "offpeak";
 }
 
 type Range = { start: number; end: number };
@@ -13,7 +14,7 @@ type Range = { start: number; end: number };
 type Props = {
   selectedRange: Range;
   onChangeSelectedRange: (range: Range) => void;
-  availabilityByDay?: Record<number, number>; // day -> available
+  availabilityByDay?: Record<number, { available: number; seasonType?: "peak" | "offpeak" }>;
   maxCapacity?: number;
 };
 
@@ -21,8 +22,8 @@ const Calendar = ({ selectedRange, onChangeSelectedRange, availabilityByDay = {}
   const currentMonth = "November 2025";
   const [anchor, setAnchor] = useState<number | null>(null);
 
-  const selectDay = (day: number, available: number, isCurrentMonth: boolean) => {
-    if (!isCurrentMonth || available === 0) return;
+  const selectDay = (day: number, dayInfo: DateInfo) => {
+    if (!dayInfo.isCurrentMonth || dayInfo.available === 0) return;
     if (anchor === null) {
       setAnchor(day);
       onChangeSelectedRange({ start: day, end: day });
@@ -50,8 +51,10 @@ const Calendar = ({ selectedRange, onChangeSelectedRange, availabilityByDay = {}
 
     // Current month days (Nov 1-30)
     for (let i = 1; i <= 30; i++) {
-      const available = availabilityByDay[i] ?? maxCapacity;
-      days.push({ date: i, available, isCurrentMonth: true });
+      const dayData = availabilityByDay[i];
+      const available = typeof dayData === 'number' ? dayData : (dayData?.available ?? maxCapacity);
+      const seasonType = typeof dayData === 'object' ? dayData?.seasonType : undefined;
+      days.push({ date: i, available, isCurrentMonth: true, seasonType });
     }
 
     return days;
@@ -72,7 +75,7 @@ const Calendar = ({ selectedRange, onChangeSelectedRange, availabilityByDay = {}
     }
 
     if (day.available === 0) {
-      return "bg-unavailable rounded-lg p-2 text-center text-muted-foreground cursor-not-allowed";
+      return "bg-gray-300 rounded-lg p-2 text-center text-muted-foreground cursor-not-allowed";
     }
 
     const isInRange = isSelected(day.date);
@@ -81,13 +84,20 @@ const Calendar = ({ selectedRange, onChangeSelectedRange, availabilityByDay = {}
 
     let classes = "p-2 text-center cursor-pointer transition-colors ";
 
+    // Determine background color based on season
+    let bgColor = "bg-available "; // default
+    if (day.seasonType === "peak") {
+      bgColor = "bg-pink-200 hover:bg-pink-300 ";
+    } else if (day.seasonType === "offpeak") {
+      bgColor = "bg-orange-200 hover:bg-orange-300 ";
+    }
+
     if (isInRange) {
-      classes += "bg-available ";
-      if (isStart) classes += "rounded-l-lg ring-2 ring-selected-border ";
-      if (isEnd) classes += "rounded-r-lg ring-2 ring-selected-border ";
-      if (!isStart && !isEnd) classes += "";
+      classes += bgColor;
+      if (isStart) classes += "rounded-l-lg ring-2 ring-blue-500 ";
+      if (isEnd) classes += "rounded-r-lg ring-2 ring-blue-500 ";
     } else {
-      classes += "rounded-lg hover:bg-available/50 ";
+      classes += "rounded-lg " + bgColor;
     }
 
     return classes;
@@ -125,17 +135,33 @@ const Calendar = ({ selectedRange, onChangeSelectedRange, availabilityByDay = {}
 
       <div className="grid grid-cols-7 gap-2">
         {calendarDays.map((day, index) => (
-          <div key={index} className={getDayClasses(day)} onClick={() => selectDay(day.date, day.available, day.isCurrentMonth)}>
-            <div className={`font-semibold ${isSelected(day.date) && day.isCurrentMonth ? "text-available-foreground" : ""}`}>
+          <div key={index} className={getDayClasses(day)} onClick={() => selectDay(day.date, day)}>
+            <div className={`font-semibold ${isSelected(day.date) && day.isCurrentMonth ? "text-gray-900" : ""}`}>
               {day.date}
             </div>
             {day.isCurrentMonth && day.available > 0 && (
-              <div className={`text-xs mt-1 ${isSelected(day.date) ? "text-available-foreground" : "text-muted-foreground"}`}>
-                {day.available} left
+              <div className={`text-xs mt-1 ${isSelected(day.date) ? "text-gray-900" : "text-gray-700"}`}>
+                {day.seasonType === "peak" ? "Peak" : day.seasonType === "offpeak" ? "Off-Peak" : "Available"}
               </div>
             )}
           </div>
         ))}
+      </div>
+
+      {/* Legend */}
+      <div className="mt-4 flex flex-wrap gap-4 text-sm">
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-4 rounded bg-gray-300"></div>
+          <span className="text-muted-foreground">Unavailable</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-4 rounded bg-pink-200"></div>
+          <span className="text-muted-foreground">Peak Season</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-4 rounded bg-orange-200"></div>
+          <span className="text-muted-foreground">Off-Peak Season</span>
+        </div>
       </div>
 
       <div className="mt-6 border-t border-border pt-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 text-sm">

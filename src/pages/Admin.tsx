@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Calendar as CalendarIcon, Users, CheckCircle, XCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, Lock } from "lucide-react";
+import { Calendar as CalendarIcon, Users, CheckCircle, XCircle, Edit, Trash2, Search, ChevronLeft, ChevronRight, Lock, DollarSign, Send, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,6 +33,7 @@ const Admin = () => {
   const approve = useMutation(api.bookings.updateStatus);
   const updateBooking = useMutation(api.bookings.updateBooking);
   const removeBooking = useMutation(api.bookings.remove);
+  const completeStay = useMutation(api.bookings.completeStay);
   const setMaxCapacity = useMutation(api.availability.setMaxCapacity);
   const setDateAvailability = useMutation(api.availability.setDateAvailability);
 
@@ -67,6 +68,26 @@ const Admin = () => {
     toast.success("Booking rejected");
   };
 
+  const handleRequestPayment = async (id: Id<"bookings">) => {
+    await approve({ id, status: "payment_requested", adminKey: adminKey ?? undefined });
+    toast.success("Payment request sent");
+  };
+
+  const handlePaymentReceived = async (id: Id<"bookings">) => {
+    await approve({ id, status: "payment_received", adminKey: adminKey ?? undefined });
+    toast.success("Payment received marked");
+  };
+
+  const handleConfirm = async (id: Id<"bookings">) => {
+    await approve({ id, status: "confirmed", adminKey: adminKey ?? undefined });
+    toast.success("Booking confirmed! Dates are now blocked.");
+  };
+
+  const handleCompleteStay = async (id: Id<"bookings">) => {
+    await completeStay({ id, adminKey: adminKey ?? undefined });
+    toast.success("Stay marked as completed. 1-year cooldown started.");
+  };
+
   const handleDelete = async (id: Id<"bookings">) => {
     await removeBooking({ id, adminKey: adminKey ?? undefined });
     toast.success("Booking deleted");
@@ -92,13 +113,34 @@ const handleEditBooking = (booking: Doc<"bookings">) => {
     }
   };
 
-  const getStatusBadge = (status: "pending" | "approved" | "rejected") => {
+  const getStatusBadge = (status: "pending" | "approved" | "rejected" | "payment_requested" | "payment_received" | "confirmed") => {
     switch (status) {
       case "approved":
         return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-available text-available-foreground">
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
             <CheckCircle className="w-3 h-3 mr-1" />
             Approved
+          </span>
+        );
+      case "payment_requested":
+        return (
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+            <DollarSign className="w-3 h-3 mr-1" />
+            Payment Requested
+          </span>
+        );
+      case "payment_received":
+        return (
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+            <Check className="w-3 h-3 mr-1" />
+            Payment Received
+          </span>
+        );
+      case "confirmed":
+        return (
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+            <CheckCircle className="w-3 h-3 mr-1" />
+            Confirmed
           </span>
         );
       case "rejected":
@@ -394,10 +436,10 @@ const handleEditBooking = (booking: Doc<"bookings">) => {
               <TableHeader>
                 <TableRow>
                   <TableHead>Guest Name</TableHead>
-                  <TableHead>Email</TableHead>
+                  <TableHead>Bungalow</TableHead>
+                  <TableHead>User Type</TableHead>
                   <TableHead>Check-in</TableHead>
                   <TableHead>Check-out</TableHead>
-                  <TableHead>Guests</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
@@ -413,20 +455,21 @@ const handleEditBooking = (booking: Doc<"bookings">) => {
 filteredBookings.map((booking: Doc<"bookings">) => (
                     <TableRow key={booking._id}>
                       <TableCell className="font-medium">{booking.userName ?? "-"}</TableCell>
-                      <TableCell>{booking.userEmail ?? "-"}</TableCell>
+                      <TableCell>{booking.bungalowNumber ?? "-"}</TableCell>
+                      <TableCell className="capitalize">{booking.userType ?? "-"}</TableCell>
                       <TableCell>{new Date(booking.checkIn).toLocaleDateString()}</TableCell>
                       <TableCell>{new Date(booking.checkOut).toLocaleDateString()}</TableCell>
-                      <TableCell>{booking.guests}</TableCell>
                       <TableCell>{getStatusBadge(booking.status)}</TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1">
                           {booking.status === "pending" && (
                             <>
                               <Button
                                 size="sm"
                                 variant="ghost"
                                 onClick={() => handleApprove(booking._id)}
-                                className="text-available-foreground hover:text-available-foreground hover:bg-available/20"
+                                className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                title="Approve"
                               >
                                 <CheckCircle className="h-4 w-4" />
                               </Button>
@@ -435,12 +478,57 @@ filteredBookings.map((booking: Doc<"bookings">) => (
                                 variant="ghost"
                                 onClick={() => handleReject(booking._id)}
                                 className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                title="Reject"
                               >
                                 <XCircle className="h-4 w-4" />
                               </Button>
                             </>
                           )}
-                          <Button size="sm" variant="ghost" onClick={() => handleEditBooking(booking)} className="hover:bg-secondary">
+                          {booking.status === "approved" && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleRequestPayment(booking._id)}
+                              className="text-yellow-600 hover:text-yellow-700 hover:bg-yellow-50"
+                              title="Request Payment"
+                            >
+                              <Send className="h-4 w-4" />
+                            </Button>
+                          )}
+                          {booking.status === "payment_requested" && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handlePaymentReceived(booking._id)}
+                              className="text-purple-600 hover:text-purple-700 hover:bg-purple-50"
+                              title="Mark Payment Received"
+                            >
+                              <DollarSign className="h-4 w-4" />
+                            </Button>
+                          )}
+                          {booking.status === "payment_received" && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleConfirm(booking._id)}
+                              className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                              title="Confirm Booking"
+                            >
+                              <Check className="h-4 w-4" />
+                            </Button>
+                          )}
+                          {booking.status === "confirmed" && !booking.stayCompletedAt && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleCompleteStay(booking._id)}
+                              className="text-gray-600 hover:text-gray-700 hover:bg-gray-50"
+                              title="Mark Stay Completed"
+                            >
+                              <CheckCircle className="h-4 w-4" />
+                            </Button>
+                          )}
+                          <Button size="sm" variant="ghost" onClick={() => handleEditBooking(booking)} className="hover:bg-secondary" title="Edit">
                             <Edit className="h-4 w-4" />
                           </Button>
                           <Button
@@ -448,6 +536,7 @@ filteredBookings.map((booking: Doc<"bookings">) => (
                             variant="ghost"
                             onClick={() => handleDelete(booking._id)}
                             className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                            title="Delete"
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>

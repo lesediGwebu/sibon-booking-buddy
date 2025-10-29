@@ -6,14 +6,28 @@ export default defineSchema({
     userId: v.string(),
     userEmail: v.optional(v.string()),
     userName: v.optional(v.string()),
-    checkIn: v.string(), // YYYY-MM-DD
-    checkOut: v.string(), // YYYY-MM-DD
-    guests: v.number(),
-    status: v.union(v.literal("pending"), v.literal("approved"), v.literal("rejected")),
+    bungalowNumber: v.optional(v.string()), // User's bungalow number
+    userType: v.optional(v.union(v.literal("owner"), v.literal("registered"))), // Owner or Registered User
+    checkIn: v.string(), // YYYY-MM-DD (Arrival Date)
+    checkOut: v.string(), // YYYY-MM-DD (Departure Date)
+    guests: v.optional(v.number()), // Made optional since capacity is fixed
+    status: v.union(
+      v.literal("pending"), 
+      v.literal("approved"), 
+      v.literal("rejected"),
+      v.literal("payment_requested"), // Admin sent EFT request
+      v.literal("payment_received"), // Payment received, ready for confirmation
+      v.literal("confirmed") // Fully confirmed, dates blocked
+    ),
     notes: v.optional(v.string()),
     createdAt: v.number(),
+    stayCompletedAt: v.optional(v.number()), // Unix timestamp when stay was completed
+    paymentRequestedAt: v.optional(v.number()),
+    paymentReceivedAt: v.optional(v.number()),
+    confirmedAt: v.optional(v.number()),
   })
     .index("by_user", ["userId"]) // list my bookings
+    .index("by_bungalow", ["bungalowNumber"]) // lookup by bungalow number
     .index("by_status", ["status", "createdAt"]) // admin views
     .index("by_createdAt", ["createdAt"]),
 
@@ -21,6 +35,7 @@ export default defineSchema({
     date: v.string(), // YYYY-MM-DD
     available: v.number(),
     blocked: v.boolean(),
+    seasonType: v.optional(v.union(v.literal("peak"), v.literal("offpeak"))), // Season pricing
   }).index("by_date", ["date"]),
 
   settings: defineTable({

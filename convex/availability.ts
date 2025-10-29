@@ -35,17 +35,28 @@ export const getMonthAvailability = query({
     // Pull all dates for the month
     const results = await ctx.db.query("availability").collect();
     const prefix = `${year}-${String(month).padStart(2, "0")}-`;
-    const byDate: Record<string, { available: number; blocked: boolean }> = {};
+    const byDate: Record<string, { available: number; blocked: boolean; seasonType?: "peak" | "offpeak" }> = {};
     for (const r of results) {
-      if (r.date.startsWith(prefix)) byDate[r.date] = { available: r.available, blocked: r.blocked };
+      if (r.date.startsWith(prefix)) {
+        byDate[r.date] = { 
+          available: r.available, 
+          blocked: r.blocked,
+          seasonType: r.seasonType 
+        };
+      }
     }
     return byDate;
   },
 });
 
 export const setDateAvailability = mutation({
-  args: { date: v.string(), available: v.number(), adminKey: v.optional(v.string()) },
-  handler: async (ctx, { date, available, adminKey }) => {
+  args: { 
+    date: v.string(), 
+    available: v.number(), 
+    seasonType: v.optional(v.union(v.literal("peak"), v.literal("offpeak"))),
+    adminKey: v.optional(v.string()) 
+  },
+  handler: async (ctx, { date, available, seasonType, adminKey }) => {
     const blocked = available === 0;
     const settings = await ctx.db
       .query("settings")
@@ -59,9 +70,57 @@ export const setDateAvailability = mutation({
       .withIndex("by_date", (q) => q.eq("date", date))
       .unique();
     if (existing) {
-      await ctx.db.patch(existing._id, { available, blocked });
+      await ctx.db.patch(existing._id, { available, blocked, seasonType });
     } else {
-      await ctx.db.insert("availability", { date, available, blocked });
+      await ctx.db.insert("availability", { date, available, blocked, seasonType });
     }
+  },
+});
+
+// Batch set season type for date range
+export const setSeasonForDateRange = mutation({
+  args: {
+    startDate: v.string(), // YYYY-MM-DD
+    endDate: v.string(),   // YYYY-MM-DD
+    seasonType: v.union(v.literal("peak"), v.literal("offpeak")),
+    adminKey: v.optional(v.string()),
+  },
+  handler: async (ctx, { startDate, endDate, seasonType, adminKey }) => {
+    const settings = await ctx.db
+      .query("settings")
+      .withIndex("by_key", (q) => q.eq("key", "global"))
+      .unique();
+    const storedKey = settings?.value?.adminKey;
+    if (storedKey && storedKey !== adminKey) throw new Error("Forbidden");
+
+    // Get max capacity
+    const maxCapacity = settings?.value?.maxCapacity ?? 16;
+
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    
+    const updates = [];
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const dateStr = d.toISOString().split('T')[0];
+      
+      const existing = await ctx.db
+        .query("availability")
+        .withIndex("by_date", (q) => q.eq("date", dateStr))
+        .unique();
+      
+      if (existing) {
+        await ctx.db.patch(existing._id, { seasonType });
+      } else {
+        await ctx.db.insert("availability", { 
+          date: dateStr, 
+          available: maxCapacity, 
+          blocked: false,
+          seasonType 
+        });
+      }
+      updates.push(dateStr);
+    }
+    
+    return { success: true, datesUpdated: updates.length };
   },
 });
