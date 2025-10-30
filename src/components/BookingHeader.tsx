@@ -14,16 +14,18 @@ const BookingHeader = () => {
           <div className="flex items-center space-x-4">
             <img 
               src="/ingwelala-logo.jpeg" 
-              alt="Ingwelala Logo" 
+              alt="Sibon Logo" 
               className="h-14 w-14 md:h-16 md:w-16 rounded-lg bg-white p-1 object-contain"
             />
             <div>
-              <h1 className="text-2xl md:text-3xl font-bold">Ingwelala Booking</h1>
-              <p className="text-sm md:text-base opacity-90">Max capacity: 16 guests</p>
+              <h1 className="text-2xl md:text-3xl font-bold">Sibon Booking</h1>
+              <p className="text-sm md:text-base opacity-90">Sleeps up to 16 guests</p>
             </div>
           </div>
           <a 
-            href="#" 
+            href="https://ingwelala.co.za/about/sibon.html" 
+            target="_blank" 
+            rel="noopener noreferrer"
             className="hidden md:inline-block text-white font-semibold py-2 px-4 border border-white rounded-lg hover:bg-white hover:text-foreground transition-colors"
           >
             Visit Site

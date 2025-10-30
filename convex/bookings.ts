@@ -115,7 +115,7 @@ export const updateStatus = mutation({
     const storedKey = settings?.value?.adminKey;
     if (storedKey && storedKey !== adminKey) throw new Error("Forbidden");
     
-    const updates: any = { status };
+    const updates: Record<string, unknown> = { status };
     
     // Track timestamps for workflow stages
     if (status === "payment_requested") {
@@ -127,6 +127,30 @@ export const updateStatus = mutation({
     }
     
     await ctx.db.patch(id, updates);
+
+    // When a booking is approved or confirmed, block the dates in availability
+    if (status === "approved" || status === "confirmed") {
+      const booking = await ctx.db.get(id);
+      if (!booking) return;
+      const checkIn = new Date(booking.checkIn);
+      const checkOut = new Date(booking.checkOut);
+      // Iterate nights: [checkIn, checkOut)
+      for (let d = new Date(checkIn); d < checkOut; d.setDate(d.getDate() + 1)) {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, "0");
+        const day = String(d.getDate()).padStart(2, "0");
+        const dateStr = `${y}-${m}-${day}`;
+        const existing = await ctx.db
+          .query("availability")
+          .withIndex("by_date", (q) => q.eq("date", dateStr))
+          .unique();
+        if (existing) {
+          await ctx.db.patch(existing._id, { available: 0, blocked: true });
+        } else {
+          await ctx.db.insert("availability", { date: dateStr, available: 0, blocked: true });
+        }
+      }
+    }
   },
 });
 

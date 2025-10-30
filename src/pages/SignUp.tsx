@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import ImageSlideshow from "@/components/ImageSlideshow";
 
 const SignUp = () => {
   const navigate = useNavigate();
@@ -10,36 +11,31 @@ const SignUp = () => {
 
   return (
     <div className="min-h-screen flex flex-col lg:flex-row">
-      {/* Left side - Branding */}
-      <div className="lg:w-1/2 relative bg-hero-brown text-white p-8 lg:p-12 flex flex-col justify-center">
-        <div
-          className="absolute inset-0 bg-cover bg-center opacity-20"
-          style={{
-            backgroundImage:
-              'url(https://images.unsplash.com/photo-1521401830884-6c03c1c87ebb?q=80&w=2070&auto=format&fit=crop)',
-          }}
-        />
+      {/* Left side - Branding with Slideshow */}
+      <div className="lg:w-1/2 relative bg-hero-brown text-white overflow-hidden">
+        <ImageSlideshow />
+        <div className="absolute inset-0 bg-hero-brown/60 z-10" />
 
-        <div className="relative z-10 max-w-md">
+        <div className="relative z-20 max-w-md p-8 lg:p-12 flex flex-col justify-center min-h-screen">
           <div className="flex items-center space-x-3 mb-6">
-            <img src="/ingwelala-logo.jpeg" alt="Ingwelala Logo" className="h-16 w-16 rounded-lg object-contain" />
-            <h1 className="text-3xl font-bold">Ingwelala</h1>
+            <img src="/ingwelala-logo.jpeg" alt="Sibon Logo" className="h-16 w-16 rounded-lg bg-white p-1 object-contain" />
+            <h1 className="text-3xl font-bold">Sibon</h1>
           </div>
 
-          <h2 className="text-4xl font-bold mb-4">Welcome to Ingwelala</h2>
-          <p className="text-lg opacity-90 mb-6">Sign in to start booking your perfect getaway at Ingwelala.</p>
+          <h2 className="text-4xl font-bold mb-4">Welcome to Sibon</h2>
+          <p className="text-lg opacity-90 mb-6">Your perfect bush getaway awaits. Book your stay at Sibon today.</p>
           <div className="space-y-3 text-sm">
             <div className="flex items-start space-x-3">
               <div className="w-1.5 h-1.5 rounded-full bg-white mt-2" />
-              <p>Easy booking management</p>
+              <p>Sleeps up to 16 guests</p>
             </div>
             <div className="flex items-start space-x-3">
               <div className="w-1.5 h-1.5 rounded-full bg-white mt-2" />
-              <p>Real-time availability updates</p>
+              <p>Competitive seasonal rates</p>
             </div>
             <div className="flex items-start space-x-3">
               <div className="w-1.5 h-1.5 rounded-full bg-white mt-2" />
-              <p>Admin approval for your peace of mind</p>
+              <p>Easy booking with admin approval</p>
             </div>
           </div>
         </div>

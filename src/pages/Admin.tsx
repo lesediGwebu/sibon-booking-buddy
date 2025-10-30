@@ -6,10 +6,12 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Doc, Id } from "../../convex/_generated/dataModel";
+import { isPeakSeason } from "@/utils/southAfricanHolidays";
 
 const Admin = () => {
   const [searchTerm, setSearchTerm] = useState("");
@@ -18,7 +20,6 @@ const Admin = () => {
   const [isCalendarDialogOpen, setIsCalendarDialogOpen] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(new Date(2025, 10)); // November 2025
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [editCapacity, setEditCapacity] = useState<number>(16);
   const [maxCapacityLocal, setMaxCapacityLocal] = useState<number>(16);
 
   // Queries
@@ -28,6 +29,47 @@ const Admin = () => {
     year: currentMonth.getFullYear(),
     month: currentMonth.getMonth() + 1,
   });
+
+  // Helpers: parse/format dates (YYYY-MM-DD <-> dd/mm/yyyy)
+  const formatDDMMYYYY = (isoDate: string) => {
+    if (!isoDate) return "";
+    const [y, m, d] = isoDate.split("-");
+    return `${d}/${m}/${y}`;
+  };
+  const parseLocal = (isoDate: string) => {
+    const [y, m, d] = isoDate.split("-").map(Number);
+    return new Date(y, (m || 1) - 1, d || 1);
+  };
+  const toISO = (date: Date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    const d = String(date.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  };
+
+  const computeNights = (checkIn: string, checkOut: string) => {
+    if (!checkIn || !checkOut) return 0;
+    const start = parseLocal(checkIn);
+    const end = parseLocal(checkOut);
+    start.setHours(0,0,0,0);
+    end.setHours(0,0,0,0);
+    const diff = Math.round((end.getTime() - start.getTime()) / (1000*60*60*24));
+    return Math.max(1, diff);
+  };
+
+  const computeTotalCost = (checkIn: string, checkOut: string) => {
+    if (!checkIn || !checkOut) return 0;
+    const start = parseLocal(checkIn);
+    const end = parseLocal(checkOut);
+    let total = 0;
+    const cur = new Date(start);
+    while (cur < end) {
+      const dateStr = toISO(cur);
+      total += isPeakSeason(dateStr) ? 8300 : 4600;
+      cur.setDate(cur.getDate() + 1);
+    }
+    return total;
+  };
 
   // Mutations
   const approve = useMutation(api.bookings.updateStatus);
@@ -207,23 +249,23 @@ const handleEditBooking = (booking: Doc<"bookings">) => {
 
   const handleDateClick = (dateStr: string) => {
     setSelectedDate(dateStr);
-    const dateAvail = availability[dateStr] || { available: maxCapacity, blocked: false };
-    setEditCapacity(dateAvail.available);
     setIsCalendarDialogOpen(true);
   };
 
-  const handleSaveAvailability = async () => {
-    if (selectedDate) {
-      await setDateAvailability({ date: selectedDate, available: editCapacity, adminKey: adminKey ?? undefined });
-      toast.success("Availability updated");
-      setIsCalendarDialogOpen(false);
-    }
-  };
 
   const handleBlockDate = async () => {
     if (selectedDate) {
       await setDateAvailability({ date: selectedDate, available: 0, adminKey: adminKey ?? undefined });
       toast.success("Date blocked");
+      setIsCalendarDialogOpen(false);
+    }
+  };
+
+  const handleUnblockDate = async () => {
+    if (selectedDate) {
+      const max = maxCapacity;
+      await setDateAvailability({ date: selectedDate, available: max, adminKey: adminKey ?? undefined });
+      toast.success("Date unblocked");
       setIsCalendarDialogOpen(false);
     }
   };
@@ -237,7 +279,7 @@ const handleEditBooking = (booking: Doc<"bookings">) => {
           <img src="/ingwelala-logo.jpeg" alt="Ingwelala Logo" className="h-14 w-14 rounded-lg bg-white p-1 object-contain" />
           <div>
             <h1 className="text-3xl font-bold">Admin Dashboard</h1>
-            <p className="text-sm opacity-90 mt-1">Manage bookings and availability for Ingwelala</p>
+            <p className="text-sm opacity-90 mt-1">Manage bookings and availability for Sibon</p>
           </div>
         </div>
       </header>
@@ -368,7 +410,6 @@ const handleEditBooking = (booking: Doc<"bookings">) => {
 
               const dateAvail = availability[day.date];
               const isBlocked = dateAvail?.blocked || dateAvail?.available === 0;
-              const availCount = dateAvail?.available ?? maxCapacity;
 
               return (
                 <button
@@ -377,19 +418,13 @@ const handleEditBooking = (booking: Doc<"bookings">) => {
                   className={`p-3 text-center rounded-lg transition-all hover:ring-2 hover:ring-primary ${
                     isBlocked
                       ? "bg-unavailable cursor-pointer"
-                      : availCount < maxCapacity
-                      ? "bg-accent/30 cursor-pointer"
                       : "bg-available/30 hover:bg-available/50 cursor-pointer"
                   }`}
                 >
                   <div className="font-semibold">{day.day}</div>
-                  {isBlocked ? (
+                  {isBlocked && (
                     <div className="text-xs mt-1 text-destructive flex items-center justify-center">
                       <Lock className="h-3 w-3" />
-                    </div>
-                  ) : (
-                    <div className="text-xs mt-1 text-muted-foreground">
-                      {availCount}/{maxCapacity}
                     </div>
                   )}
                 </button>
@@ -401,15 +436,11 @@ const handleEditBooking = (booking: Doc<"bookings">) => {
             <div className="flex items-center gap-6">
               <div className="flex items-center gap-2">
                 <div className="w-4 h-4 rounded bg-available/30" />
-                <span>Full availability</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 rounded bg-accent/30" />
-                <span>Partial availability</span>
+                <span>Available</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-4 h-4 rounded bg-unavailable" />
-                <span>Blocked/Unavailable</span>
+                <span>Blocked</span>
               </div>
             </div>
           </div>
@@ -440,6 +471,7 @@ const handleEditBooking = (booking: Doc<"bookings">) => {
                   <TableHead>User Type</TableHead>
                   <TableHead>Check-in</TableHead>
                   <TableHead>Check-out</TableHead>
+                  <TableHead>Total Price</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
@@ -457,90 +489,73 @@ filteredBookings.map((booking: Doc<"bookings">) => (
                       <TableCell className="font-medium">{booking.userName ?? "-"}</TableCell>
                       <TableCell>{booking.bungalowNumber ?? "-"}</TableCell>
                       <TableCell className="capitalize">{booking.userType ?? "-"}</TableCell>
-                      <TableCell>{new Date(booking.checkIn).toLocaleDateString()}</TableCell>
-                      <TableCell>{new Date(booking.checkOut).toLocaleDateString()}</TableCell>
+                      <TableCell>{formatDDMMYYYY(booking.checkIn)}</TableCell>
+                      <TableCell>{formatDDMMYYYY(booking.checkOut)}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-col text-right">
+                          <span className="font-semibold text-hero-brown">R {computeTotalCost(booking.checkIn, booking.checkOut).toLocaleString()}</span>
+                          <span className="text-xs text-muted-foreground">{computeNights(booking.checkIn, booking.checkOut)} night(s)</span>
+                        </div>
+                      </TableCell>
                       <TableCell>{getStatusBadge(booking.status)}</TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-1">
-                          {booking.status === "pending" && (
-                            <>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => handleApprove(booking._id)}
-                                className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                                title="Approve"
-                              >
-                                <CheckCircle className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => handleReject(booking._id)}
-                                className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                                title="Reject"
-                              >
-                                <XCircle className="h-4 w-4" />
-                              </Button>
-                            </>
-                          )}
-                          {booking.status === "approved" && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => handleRequestPayment(booking._id)}
-                              className="text-yellow-600 hover:text-yellow-700 hover:bg-yellow-50"
-                              title="Request Payment"
-                            >
-                              <Send className="h-4 w-4" />
-                            </Button>
-                          )}
-                          {booking.status === "payment_requested" && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => handlePaymentReceived(booking._id)}
-                              className="text-purple-600 hover:text-purple-700 hover:bg-purple-50"
-                              title="Mark Payment Received"
-                            >
-                              <DollarSign className="h-4 w-4" />
-                            </Button>
-                          )}
-                          {booking.status === "payment_received" && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => handleConfirm(booking._id)}
-                              className="text-green-600 hover:text-green-700 hover:bg-green-50"
-                              title="Confirm Booking"
-                            >
-                              <Check className="h-4 w-4" />
-                            </Button>
-                          )}
-                          {booking.status === "confirmed" && !booking.stayCompletedAt && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => handleCompleteStay(booking._id)}
-                              className="text-gray-600 hover:text-gray-700 hover:bg-gray-50"
-                              title="Mark Stay Completed"
-                            >
-                              <CheckCircle className="h-4 w-4" />
-                            </Button>
-                          )}
-                          <Button size="sm" variant="ghost" onClick={() => handleEditBooking(booking)} className="hover:bg-secondary" title="Edit">
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => handleDelete(booking._id)}
-                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                            title="Delete"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="outline">Actions</Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                            {booking.status === "pending" && (
+                              <>
+                                <DropdownMenuItem onClick={() => handleApprove(booking._id)}>
+                                  <CheckCircle className="h-4 w-4 mr-2" /> Approve
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleReject(booking._id)} className="text-destructive">
+                                  <XCircle className="h-4 w-4 mr-2" /> Reject
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                              </>
+                            )}
+                            {booking.status === "approved" && (
+                              <>
+                                <DropdownMenuItem onClick={() => handleRequestPayment(booking._id)}>
+                                  <Send className="h-4 w-4 mr-2" /> Request Payment
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                              </>
+                            )}
+                            {booking.status === "payment_requested" && (
+                              <>
+                                <DropdownMenuItem onClick={() => handlePaymentReceived(booking._id)}>
+                                  <DollarSign className="h-4 w-4 mr-2" /> Mark Payment Received
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                              </>
+                            )}
+                            {booking.status === "payment_received" && (
+                              <>
+                                <DropdownMenuItem onClick={() => handleConfirm(booking._id)}>
+                                  <Check className="h-4 w-4 mr-2" /> Confirm Booking
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                              </>
+                            )}
+                            {booking.status === "confirmed" && !booking.stayCompletedAt && (
+                              <>
+                                <DropdownMenuItem onClick={() => handleCompleteStay(booking._id)}>
+                                  <CheckCircle className="h-4 w-4 mr-2" /> Complete Stay
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                              </>
+                            )}
+                            <DropdownMenuItem onClick={() => handleEditBooking(booking)}>
+                              <Edit className="h-4 w-4 mr-2" /> Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleDelete(booking._id)} className="text-destructive">
+                              <Trash2 className="h-4 w-4 mr-2" /> Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   ))
@@ -555,42 +570,31 @@ filteredBookings.map((booking: Doc<"bookings">) => (
       <Dialog open={isCalendarDialogOpen} onOpenChange={setIsCalendarDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit Date Availability</DialogTitle>
+            <DialogTitle>Manage Date</DialogTitle>
             <DialogDescription>
-              Adjust the availability for {selectedDate && new Date(selectedDate).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+              {selectedDate ? formatDDMMYYYY(selectedDate) : ""}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="date-capacity">Available Capacity</Label>
-              <div className="flex items-center gap-4">
-                <Input
-                  id="date-capacity"
-                  type="number"
-                  value={editCapacity}
-                  onChange={(e) => setEditCapacity(parseInt(e.target.value) || 0)}
-                  min="0"
-                  max={maxCapacity}
-                  className="flex-1"
-                />
-                <span className="text-sm text-muted-foreground">/ {maxCapacity} max</span>
-              </div>
-              <p className="text-xs text-muted-foreground">Set to 0 to block this date completely</p>
-            </div>
+          <div className="space-y-4 py-2">
+            {selectedDate && (
+              <p className="text-sm text-muted-foreground">
+                {availability[selectedDate]?.blocked || availability[selectedDate]?.available === 0 ? "This date is currently blocked." : "This date is currently available."}
+              </p>
+            )}
           </div>
           <DialogFooter className="flex-col sm:flex-row gap-2">
-            <Button variant="destructive" onClick={handleBlockDate} className="w-full sm:w-auto">
-              <Lock className="h-4 w-4 mr-2" />
-              Block Date
+            {selectedDate && (availability[selectedDate]?.blocked || availability[selectedDate]?.available === 0) ? (
+              <Button onClick={handleUnblockDate} className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white">
+                Unblock Date
+              </Button>
+            ) : (
+              <Button variant="destructive" onClick={handleBlockDate} className="w-full sm:w-auto">
+                <Lock className="h-4 w-4 mr-2" /> Block Date
+              </Button>
+            )}
+            <Button variant="outline" onClick={() => setIsCalendarDialogOpen(false)} className="w-full sm:w-auto">
+              Close
             </Button>
-            <div className="flex gap-2 w-full sm:w-auto">
-              <Button variant="outline" onClick={() => setIsCalendarDialogOpen(false)} className="flex-1 sm:flex-none">
-                Cancel
-              </Button>
-              <Button onClick={handleSaveAvailability} className="bg-hero-brown hover:bg-hero-brown/90 flex-1 sm:flex-none">
-                Save Changes
-              </Button>
-            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -611,7 +615,19 @@ filteredBookings.map((booking: Doc<"bookings">) => (
                     id="edit-checkin"
                     type="date"
                     value={selectedBooking.checkIn}
-                    onChange={(e) => setSelectedBooking({ ...selectedBooking, checkIn: e.target.value })}
+                    min={toISO(new Date())}
+                    onChange={(e) => {
+                      const newIn = e.target.value;
+                      let newOut = selectedBooking.checkOut;
+                      const di = parseLocal(newIn);
+                      const do_ = parseLocal(newOut);
+                      if (!isNaN(di.getTime()) && !isNaN(do_.getTime()) && do_ <= di) {
+                        const adj = new Date(di);
+                        adj.setDate(adj.getDate() + 1);
+                        newOut = toISO(adj);
+                      }
+                      setSelectedBooking({ ...selectedBooking, checkIn: newIn, checkOut: newOut });
+                    }}
                   />
                 </div>
                 <div className="space-y-2">
@@ -620,7 +636,18 @@ filteredBookings.map((booking: Doc<"bookings">) => (
                     id="edit-checkout"
                     type="date"
                     value={selectedBooking.checkOut}
-                    onChange={(e) => setSelectedBooking({ ...selectedBooking, checkOut: e.target.value })}
+                    min={selectedBooking.checkIn}
+                    onChange={(e) => {
+                      let newOut = e.target.value;
+                      const di = parseLocal(selectedBooking.checkIn);
+                      const do_ = parseLocal(newOut);
+                      if (!isNaN(di.getTime()) && !isNaN(do_.getTime()) && do_ <= di) {
+                        const adj = new Date(di);
+                        adj.setDate(adj.getDate() + 1);
+                        newOut = toISO(adj);
+                      }
+                      setSelectedBooking({ ...selectedBooking, checkOut: newOut });
+                    }}
                   />
                 </div>
               </div>

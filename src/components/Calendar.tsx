@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, Moon, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { isPeakSeason, getHolidayName } from "@/utils/southAfricanHolidays";
 
 interface DateInfo {
   date: number;
@@ -9,65 +10,162 @@ interface DateInfo {
   seasonType?: "peak" | "offpeak";
 }
 
-type Range = { start: number; end: number };
+type Range = { 
+  start: number; 
+  end: number;
+  startDate?: Date;
+  endDate?: Date;
+};
 
 type Props = {
   selectedRange: Range;
   onChangeSelectedRange: (range: Range) => void;
   availabilityByDay?: Record<number, { available: number; seasonType?: "peak" | "offpeak" }>;
   maxCapacity?: number;
+  onMonthChange?: (year: number, month: number) => void; // month 1-12
 };
 
-const Calendar = ({ selectedRange, onChangeSelectedRange, availabilityByDay = {}, maxCapacity = 16 }: Props) => {
-  const currentMonth = "November 2025";
-  const [anchor, setAnchor] = useState<number | null>(null);
+const Calendar = ({ selectedRange, onChangeSelectedRange, availabilityByDay = {}, maxCapacity = 16, onMonthChange }: Props) => {
+  const today = new Date();
+  const [currentDate, setCurrentDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
+  const [tempStart, setTempStart] = useState<Date | null>(null);
+  
+  const maxDate = new Date(today.getFullYear() + 2, today.getMonth(), 0); // 2 years from now
 
+  const goToPreviousMonth = () => {
+    const newDate = new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1);
+    if (newDate >= new Date(today.getFullYear(), today.getMonth(), 1)) {
+      setCurrentDate(newDate);
+      onMonthChange?.(newDate.getFullYear(), newDate.getMonth() + 1);
+    }
+  };
+  
+  const goToNextMonth = () => {
+    const newDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1);
+    if (newDate <= maxDate) {
+      setCurrentDate(newDate);
+      onMonthChange?.(newDate.getFullYear(), newDate.getMonth() + 1);
+    }
+  };
+  
   const selectDay = (day: number, dayInfo: DateInfo) => {
     if (!dayInfo.isCurrentMonth || dayInfo.available === 0) return;
-    if (anchor === null) {
-      setAnchor(day);
-      onChangeSelectedRange({ start: day, end: day });
+    
+    // Check if date is in the past
+    const clickedDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    todayStart.setHours(0, 0, 0, 0);
+    clickedDate.setHours(0, 0, 0, 0);
+    
+    if (clickedDate < todayStart) return;
+    
+    // If no start date set in this selection flow, start fresh
+    if (!tempStart) {
+      setTempStart(clickedDate);
+      onChangeSelectedRange({ 
+        start: clickedDate.getDate(), 
+        end: clickedDate.getDate(),
+        startDate: clickedDate,
+        endDate: clickedDate
+      });
       return;
     }
-    if (day < anchor) {
-      // reset anchor to new start
-      setAnchor(day);
-      onChangeSelectedRange({ start: day, end: day });
-      return;
+    
+    // We have a start date, now set end date
+    if (clickedDate < tempStart) {
+      // Clicked earlier than start, swap them
+      onChangeSelectedRange({ 
+        start: clickedDate.getDate(),
+        end: tempStart.getDate(),
+        startDate: clickedDate,
+        endDate: tempStart
+      });
+    } else {
+      // Normal case: end after start
+      onChangeSelectedRange({ 
+        start: tempStart.getDate(), 
+        end: day,
+        startDate: tempStart,
+        endDate: clickedDate
+      });
     }
-    // finalize range
-    onChangeSelectedRange({ start: anchor, end: day });
-    setAnchor(null);
+    setTempStart(null); // Reset for next selection
   };
 
-  // Generate calendar days for November 2025
+  // Generate calendar days for current month
   const generateCalendarDays = (): DateInfo[] => {
     const days: DateInfo[] = [];
-
-    // Previous month days (Oct 27-31)
-    for (let i = 27; i <= 31; i++) {
-      days.push({ date: i, available: maxCapacity, isCurrentMonth: false });
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    
+    // First day of month and how many days
+    const firstDayOfMonth = new Date(year, month, 1);
+    const lastDayOfMonth = new Date(year, month + 1, 0);
+    const daysInMonth = lastDayOfMonth.getDate();
+    const startingDayOfWeek = firstDayOfMonth.getDay();
+    
+    // Previous month padding
+    const prevMonthLastDay = new Date(year, month, 0).getDate();
+    const paddingDays = startingDayOfWeek === 0 ? 6 : startingDayOfWeek - 1; // Monday start
+    
+    for (let i = paddingDays; i > 0; i--) {
+      days.push({ 
+        date: prevMonthLastDay - i + 1, 
+        available: maxCapacity, 
+        isCurrentMonth: false 
+      });
     }
 
-    // Current month days (Nov 1-30)
-    for (let i = 1; i <= 30; i++) {
+    // Current month days
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    
+    for (let i = 1; i <= daysInMonth; i++) {
       const dayData = availabilityByDay[i];
-      const available = typeof dayData === 'number' ? dayData : (dayData?.available ?? maxCapacity);
-      const seasonType = typeof dayData === 'object' ? dayData?.seasonType : undefined;
+      const currentDay = new Date(year, month, i);
+      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+      
+      // Check if date is in the past
+      const isPast = currentDay < todayStart;
+      const available = isPast ? 0 : (typeof dayData === 'number' ? dayData : (dayData?.available ?? maxCapacity));
+      
+      // Determine season using SA holidays logic
+      let seasonType: "peak" | "offpeak" | undefined = typeof dayData === 'object' ? dayData?.seasonType : undefined;
+      
+      if (!seasonType && !isPast) {
+        seasonType = isPeakSeason(dateStr) ? 'peak' : 'offpeak';
+      }
+      
       days.push({ date: i, available, isCurrentMonth: true, seasonType });
     }
 
     return days;
   };
 
+  useEffect(() => {
+    onMonthChange?.(currentDate.getFullYear(), currentDate.getMonth() + 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const calendarDays = generateCalendarDays();
 
-  const isSelected = (date: number) => {
-    return date >= selectedRange.start && date <= selectedRange.end;
+  const isSelected = (day: number) => {
+    if (!selectedRange.startDate || !selectedRange.endDate) return false;
+    
+    const dayDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
+    return dayDate >= selectedRange.startDate && dayDate <= selectedRange.endDate;
   };
 
-  const isRangeStart = (date: number) => date === selectedRange.start;
-  const isRangeEnd = (date: number) => date === selectedRange.end;
+  const isRangeStart = (day: number) => {
+    if (!selectedRange.startDate) return false;
+    const dayDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
+    return dayDate.getTime() === selectedRange.startDate.getTime();
+  };
+  
+  const isRangeEnd = (day: number) => {
+    if (!selectedRange.endDate) return false;
+    const dayDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
+    return dayDate.getTime() === selectedRange.endDate.getTime();
+  };
 
   const getDayClasses = (day: DateInfo) => {
     if (!day.isCurrentMonth) {
@@ -93,9 +191,10 @@ const Calendar = ({ selectedRange, onChangeSelectedRange, availabilityByDay = {}
     }
 
     if (isInRange) {
-      classes += bgColor;
-      if (isStart) classes += "rounded-l-lg ring-2 ring-blue-500 ";
-      if (isEnd) classes += "rounded-r-lg ring-2 ring-blue-500 ";
+      classes += "bg-green-200 hover:bg-green-300 ";
+      if (isStart) classes += "rounded-l-lg ring-2 ring-green-500 ";
+      if (isEnd) classes += "rounded-r-lg ring-2 ring-green-500 ";
+      if (isStart && isEnd) classes += "rounded-lg ";
     } else {
       classes += "rounded-lg " + bgColor;
     }
@@ -103,7 +202,37 @@ const Calendar = ({ selectedRange, onChangeSelectedRange, availabilityByDay = {}
     return classes;
   };
 
-  const nights = Math.max(1, selectedRange.end - selectedRange.start);
+  const nights = (() => {
+    if (!selectedRange.startDate || !selectedRange.endDate) return 0;
+    const msPerDay = 1000 * 60 * 60 * 24;
+    const start = new Date(selectedRange.startDate);
+    const end = new Date(selectedRange.endDate);
+    // Normalize to midnight to avoid DST issues
+    start.setHours(0,0,0,0);
+    end.setHours(0,0,0,0);
+    const diff = Math.round((end.getTime() - start.getTime()) / msPerDay);
+    return Math.max(1, diff);
+  })();
+  
+  // Calculate total cost based on peak/low season days
+  const calculateTotalCost = () => {
+    if (!selectedRange.startDate || !selectedRange.endDate) return 0;
+    
+    let total = 0;
+    const current = new Date(selectedRange.startDate);
+    const end = new Date(selectedRange.endDate);
+    
+    while (current < end) {
+      const dateStr = `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}-${String(current.getDate()).padStart(2, '0')}`;
+      const isPeak = isPeakSeason(dateStr);
+      total += isPeak ? 8300 : 4600;
+      current.setDate(current.getDate() + 1);
+    }
+    
+    return total;
+  };
+  
+  const totalCost = calculateTotalCost();
 
   return (
     <div className="bg-card p-6 rounded-lg shadow-md w-full flex flex-col">
@@ -113,11 +242,25 @@ const Calendar = ({ selectedRange, onChangeSelectedRange, availabilityByDay = {}
           <p className="text-sm text-muted-foreground">Select a start and end date</p>
         </div>
         <div className="flex items-center space-x-2">
-          <Button variant="ghost" size="icon" className="rounded-full" onClick={() => console.log("Previous month")}>
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="rounded-full" 
+            onClick={goToPreviousMonth}
+            disabled={currentDate <= new Date(today.getFullYear(), today.getMonth(), 1)}
+          >
             <ChevronLeft className="h-5 w-5" />
           </Button>
-          <span className="font-semibold text-lg px-2">{currentMonth}</span>
-          <Button variant="ghost" size="icon" className="rounded-full" onClick={() => console.log("Next month")}>
+          <span className="font-semibold text-lg px-2">
+            {currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+          </span>
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="rounded-full" 
+            onClick={goToNextMonth}
+            disabled={currentDate >= new Date(maxDate.getFullYear(), maxDate.getMonth(), 1)}
+          >
             <ChevronRight className="h-5 w-5" />
           </Button>
         </div>
@@ -141,7 +284,7 @@ const Calendar = ({ selectedRange, onChangeSelectedRange, availabilityByDay = {}
             </div>
             {day.isCurrentMonth && day.available > 0 && (
               <div className={`text-xs mt-1 ${isSelected(day.date) ? "text-gray-900" : "text-gray-700"}`}>
-                {day.seasonType === "peak" ? "Peak" : day.seasonType === "offpeak" ? "Off-Peak" : "Available"}
+                {day.seasonType === "peak" ? "Peak" : day.seasonType === "offpeak" ? "Low" : "Available"}
               </div>
             )}
           </div>
@@ -156,28 +299,33 @@ const Calendar = ({ selectedRange, onChangeSelectedRange, availabilityByDay = {}
         </div>
         <div className="flex items-center gap-2">
           <div className="w-4 h-4 rounded bg-pink-200"></div>
-          <span className="text-muted-foreground">Peak Season</span>
+          <span className="text-muted-foreground">Peak Season - R8,300/night</span>
         </div>
         <div className="flex items-center gap-2">
           <div className="w-4 h-4 rounded bg-orange-200"></div>
-          <span className="text-muted-foreground">Off-Peak Season</span>
+          <span className="text-muted-foreground">Low Season - R4,600/night</span>
         </div>
       </div>
 
-      <div className="mt-6 border-t border-border pt-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 text-sm">
-        <div className="flex items-center space-x-4">
-          <div className="flex items-center space-x-2">
-            <Moon className="h-5 w-5 text-accent" />
-            <span className="font-medium">{nights} night{nights > 1 ? "s" : ""}</span>
+      <div className="mt-6 border-t border-border pt-4 space-y-3">
+        <div className="flex items-center justify-between flex-wrap gap-4 text-sm">
+          <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2">
+              <Moon className="h-5 w-5 text-accent" />
+              <span className="font-medium">{nights} night{nights > 1 ? "s" : ""}</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Users className="h-5 w-5 text-accent" />
+              <span className="font-medium">{maxCapacity} guests capacity</span>
+            </div>
           </div>
-          <div className="flex items-center space-x-2">
-            <Users className="h-5 w-5 text-accent" />
-            <span className="font-medium">{maxCapacity} guests capacity</span>
-          </div>
+          {totalCost > 0 && (
+            <div className="bg-hero-brown/10 px-4 py-2 rounded-lg">
+              <span className="text-sm text-muted-foreground">Total: </span>
+              <span className="text-xl font-bold text-hero-brown">R {totalCost.toLocaleString()}</span>
+            </div>
+          )}
         </div>
-        <Button variant="link" className="font-semibold text-primary p-0 h-auto">
-          View Availability Summary
-        </Button>
       </div>
     </div>
   );

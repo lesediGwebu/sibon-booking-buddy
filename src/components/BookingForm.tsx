@@ -12,27 +12,66 @@ import { api } from "../../convex/_generated/api";
 type Props = {
   year: number; // e.g. 2025
   month: number; // 1-12
-  selectedRange: { start: number; end: number };
+  selectedRange: { 
+    start: number; 
+    end: number;
+    startDate?: Date;
+    endDate?: Date;
+  };
+  onDateChange?: (start: Date, end: Date) => void;
 };
 
-const BookingForm = ({ year, month, selectedRange }: Props) => {
+const BookingForm = ({ year, month, selectedRange, onDateChange }: Props) => {
   const [notes, setNotes] = useState("");
   const [name, setName] = useState("");
   const [bungalowNumber, setBungalowNumber] = useState("");
   const [userType, setUserType] = useState<"owner" | "registered">("owner");
   const [submitting, setSubmitting] = useState(false);
   const [successOpen, setSuccessOpen] = useState(false);
+  const [manualCheckIn, setManualCheckIn] = useState("");
+  const [manualCheckOut, setManualCheckOut] = useState("");
   const createBooking = useMutation(api.bookings.createBooking);
   const settings = useQuery(api.availability.getSettings, {});
 
-  const { checkIn, checkOut, arrivalLabel, departureLabel } = useMemo(() => {
-    const d = (day: number) => `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    const ci = d(selectedRange.start);
-    const co = d(selectedRange.end);
-    const arrivalLabel = new Date(ci).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
-    const departureLabel = new Date(co).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
-    return { checkIn: ci, checkOut: co, arrivalLabel, departureLabel };
-  }, [year, month, selectedRange]);
+  const parseLocalDate = (value: string) => {
+    const [y, m, d] = value.split('-').map(Number);
+    return new Date(y, (m || 1) - 1, d || 1);
+  };
+
+  const formatDDMMYYYY = (date: Date) => {
+    const dd = String(date.getDate()).padStart(2, '0');
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const yyyy = date.getFullYear();
+    return `${dd}/${mm}/${yyyy}`;
+  };
+
+  const { checkIn, checkOut } = useMemo(() => {
+    // Use manual dates if set, otherwise use selected range
+    if (manualCheckIn && manualCheckOut) {
+      return { checkIn: manualCheckIn, checkOut: manualCheckOut };
+    }
+    
+    if (selectedRange.startDate && selectedRange.endDate) {
+      const formatDate = (date: Date) => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      };
+      
+      const ci = formatDate(selectedRange.startDate);
+      const co = formatDate(selectedRange.endDate);
+      return { checkIn: ci, checkOut: co };
+    }
+    
+    // Fallback for when dates aren't set yet
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const ci = today.toISOString().split('T')[0];
+    const co = tomorrow.toISOString().split('T')[0];
+    return { checkIn: ci, checkOut: co };
+  }, [selectedRange, manualCheckIn, manualCheckOut]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -59,9 +98,10 @@ const BookingForm = ({ year, month, selectedRange }: Props) => {
       });
       setNotes("");
       setSuccessOpen(true);
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error(e);
-      toast.error(e.message || "Failed to submit booking");
+      const message = e instanceof Error ? e.message : "Failed to submit booking";
+      toast.error(message);
     } finally {
       setSubmitting(false);
     }
@@ -71,7 +111,7 @@ const BookingForm = ({ year, month, selectedRange }: Props) => {
 
   return (
     <div className="bg-card p-6 rounded-lg shadow-md w-full flex flex-col">
-      <h2 className="text-xl font-semibold mb-6">Book Ingwelala</h2>
+      <h2 className="text-xl font-semibold mb-6">Book Sibon</h2>
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <div>
@@ -79,7 +119,21 @@ const BookingForm = ({ year, month, selectedRange }: Props) => {
             <Calendar className="h-4 w-4 mr-2 text-muted-foreground" />
             Arrival Date
           </label>
-          <Input id="arrivalDate" type="text" value={arrivalLabel} readOnly className="bg-secondary border-transparent cursor-pointer" />
+          <Input 
+            id="arrivalDate" 
+            type="date" 
+            value={checkIn} 
+            onChange={(e) => {
+              setManualCheckIn(e.target.value);
+              if (e.target.value && checkOut && onDateChange) {
+                const start = parseLocalDate(e.target.value);
+                const end = parseLocalDate(checkOut);
+                onDateChange(start, end);
+              }
+            }}
+            min={new Date().toISOString().split('T')[0]}
+            className="bg-background" 
+          />
         </div>
 
         <div>
@@ -87,7 +141,21 @@ const BookingForm = ({ year, month, selectedRange }: Props) => {
             <Calendar className="h-4 w-4 mr-2 text-muted-foreground" />
             Departure Date
           </label>
-          <Input id="departureDate" type="text" value={departureLabel} readOnly className="bg-secondary border-transparent cursor-pointer" />
+          <Input 
+            id="departureDate" 
+            type="date" 
+            value={checkOut} 
+            onChange={(e) => {
+              setManualCheckOut(e.target.value);
+              if (checkIn && e.target.value && onDateChange) {
+                const start = parseLocalDate(checkIn);
+                const end = parseLocalDate(e.target.value);
+                onDateChange(start, end);
+              }
+            }}
+            min={checkIn}
+            className="bg-background" 
+          />
         </div>
 
         <div>
@@ -166,8 +234,8 @@ const BookingForm = ({ year, month, selectedRange }: Props) => {
             </DialogDescription>
           </DialogHeader>
           <div className="bg-secondary rounded-md p-4 text-sm">
-            <div className="flex justify-between"><span className="text-muted-foreground">Arrival</span><span className="font-medium">{arrivalLabel}</span></div>
-            <div className="flex justify-between mt-1"><span className="text-muted-foreground">Departure</span><span className="font-medium">{departureLabel}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Arrival</span><span className="font-medium">{formatDDMMYYYY(parseLocalDate(checkIn))}</span></div>
+            <div className="flex justify-between mt-1"><span className="text-muted-foreground">Departure</span><span className="font-medium">{formatDDMMYYYY(parseLocalDate(checkOut))}</span></div>
             <div className="flex justify-between mt-1"><span className="text-muted-foreground">Bungalow</span><span className="font-medium">{bungalowNumber}</span></div>
             <div className="flex justify-between mt-1"><span className="text-muted-foreground">Status</span><span className="font-medium">{userType === "owner" ? "Owner" : "Registered User"}</span></div>
             {notes && (
