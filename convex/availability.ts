@@ -35,12 +35,13 @@ export const getMonthAvailability = query({
     // Pull all dates for the month
     const results = await ctx.db.query("availability").collect();
     const prefix = `${year}-${String(month).padStart(2, "0")}-`;
-    const byDate: Record<string, { available: number; blocked: boolean; seasonType?: "peak" | "offpeak" }> = {};
+    const byDate: Record<string, { available: number; blocked: boolean; bomaBlocked?: boolean; seasonType?: "peak" | "offpeak" }> = {};
     for (const r of results) {
       if (r.date.startsWith(prefix)) {
         byDate[r.date] = { 
           available: r.available, 
           blocked: r.blocked,
+          bomaBlocked: r.bomaBlocked,
           seasonType: r.seasonType 
         };
       }
@@ -52,27 +53,50 @@ export const getMonthAvailability = query({
 export const setDateAvailability = mutation({
   args: { 
     date: v.string(), 
-    available: v.number(), 
+    available: v.optional(v.number()), 
+    blocked: v.optional(v.boolean()),
+    bomaBlocked: v.optional(v.boolean()),
     seasonType: v.optional(v.union(v.literal("peak"), v.literal("offpeak"))),
     adminKey: v.optional(v.string()) 
   },
-  handler: async (ctx, { date, available, seasonType, adminKey }) => {
-    const blocked = available === 0;
+  handler: async (ctx, { date, available, blocked, bomaBlocked, seasonType, adminKey }) => {
     const settings = await ctx.db
       .query("settings")
       .withIndex("by_key", (q) => q.eq("key", "global"))
       .unique();
     const storedKey = settings?.value?.adminKey;
-    if (storedKey && storedKey !== adminKey) throw new Error("Forbidden");
+    // Debugging logs
+    if (storedKey && storedKey !== adminKey) {
+      // console.log(`Forbidden access: storedKey=${storedKey}, receivedKey=${adminKey}`);
+      throw new Error(`Forbidden: Invalid Admin Key. Stored: ${storedKey ? "***" : "None"}, Received: ${adminKey ? "***" : "None"}`);
+    }
 
     const existing = await ctx.db
       .query("availability")
       .withIndex("by_date", (q) => q.eq("date", date))
       .unique();
+
     if (existing) {
-      await ctx.db.patch(existing._id, { available, blocked, seasonType });
+      const updates: any = {};
+      if (available !== undefined) updates.available = available;
+      if (blocked !== undefined) updates.blocked = blocked;
+      // If available is 0, force blocked to true unless explicitly set
+      if (available === 0 && blocked === undefined) updates.blocked = true;
+      
+      if (bomaBlocked !== undefined) updates.bomaBlocked = bomaBlocked;
+      if (seasonType !== undefined) updates.seasonType = seasonType;
+
+      await ctx.db.patch(existing._id, updates);
     } else {
-      await ctx.db.insert("availability", { date, available, blocked, seasonType });
+      // For new records, require basic fields or defaults
+      const maxCapacity = settings?.value?.maxCapacity ?? 16;
+      await ctx.db.insert("availability", { 
+        date, 
+        available: available ?? maxCapacity, 
+        blocked: blocked ?? (available === 0), 
+        bomaBlocked: bomaBlocked ?? false,
+        seasonType 
+      });
     }
   },
 });

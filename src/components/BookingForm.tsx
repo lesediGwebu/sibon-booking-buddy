@@ -19,9 +19,11 @@ type Props = {
     endDate?: Date;
   };
   onDateChange?: (start: Date, end: Date) => void;
+  bomaDates: string[];
+  onBomaDatesChange: (dates: string[]) => void;
 };
 
-const BookingForm = ({ year, month, selectedRange, onDateChange }: Props) => {
+const BookingForm = ({ year, month, selectedRange, onDateChange, bomaDates, onBomaDatesChange }: Props) => {
   const [notes, setNotes] = useState("");
   const [name, setName] = useState("");
   const [bungalowNumber, setBungalowNumber] = useState("");
@@ -91,12 +93,14 @@ const BookingForm = ({ year, month, selectedRange, onDateChange }: Props) => {
         bungalowNumber,
         userType,
         notes: notes || undefined, 
-        userName: name
+        userName: name,
+        bomaDates
       });
       toast.success("Booking request submitted!", {
         description: "An admin will review your request shortly.",
       });
       setNotes("");
+      onBomaDatesChange([]);
       setSuccessOpen(true);
     } catch (e: unknown) {
       console.error(e);
@@ -238,6 +242,12 @@ const BookingForm = ({ year, month, selectedRange, onDateChange }: Props) => {
             <div className="flex justify-between mt-1"><span className="text-muted-foreground">Departure</span><span className="font-medium">{formatDDMMYYYY(parseLocalDate(checkOut))}</span></div>
             <div className="flex justify-between mt-1"><span className="text-muted-foreground">Bungalow</span><span className="font-medium">{bungalowNumber}</span></div>
             <div className="flex justify-between mt-1"><span className="text-muted-foreground">Status</span><span className="font-medium">{userType === "owner" ? "Owner" : "Registered User"}</span></div>
+            {bomaDates.length > 0 && (
+              <div className="flex justify-between mt-1">
+                <span className="text-muted-foreground">Argyle Boma</span>
+                <span className="font-medium text-primary">{bomaDates.length} night(s) requested</span>
+              </div>
+            )}
             {notes && (
               <div className="mt-2">
                 <div className="text-muted-foreground">Note</div>

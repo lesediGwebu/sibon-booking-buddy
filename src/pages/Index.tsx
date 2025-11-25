@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import BookingHeader from "@/components/BookingHeader";
 import Calendar from "@/components/Calendar";
 import BookingForm from "@/components/BookingForm";
+import BomaBooking from "@/components/BomaBooking";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Link } from "react-router-dom";
@@ -17,6 +18,7 @@ const Index = () => {
     startDate: today,
     endDate: tomorrow
   });
+  const [bomaDates, setBomaDates] = useState<string[]>([]);
 
   const settings = useQuery(api.availability.getSettings, {});
   const [viewYear, setViewYear] = useState(today.getFullYear());
@@ -75,13 +77,21 @@ const Index = () => {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 lg:items-stretch">
-          <div className="lg:col-span-2 flex">
+          <div className="lg:col-span-2 flex flex-col gap-6">
             <Calendar
               selectedRange={selectedRange}
               onChangeSelectedRange={setSelectedRange}
               availabilityByDay={availabilityByDay}
               maxCapacity={maxCapacity}
               onMonthChange={(y, m) => { setViewYear(y); setViewMonth(m); }}
+              bomaCost={bomaDates.length * 350}
+            />
+            <BomaBooking 
+              selectedDates={bomaDates} 
+              onDatesChange={setBomaDates} 
+              checkIn={selectedRange.startDate ?? today}
+              checkOut={selectedRange.endDate ?? tomorrow}
+              availability={avail as unknown as Record<string, { bomaBlocked?: boolean }>}
             />
           </div>
           <div className="flex">
@@ -89,6 +99,8 @@ const Index = () => {
               year={today.getFullYear()} 
               month={today.getMonth() + 1} 
               selectedRange={selectedRange}
+              bomaDates={bomaDates}
+              onBomaDatesChange={setBomaDates}
               onDateChange={(start, end) => {
                 if (start && end && !isNaN(start.getTime()) && !isNaN(end.getTime())) {
                   const s = new Date(start);
@@ -100,6 +112,18 @@ const Index = () => {
                     e = new Date(s);
                     e.setDate(s.getDate() + 1);
                   }
+                  // Filter out any boma dates that are no longer in range
+                  const formatDate = (d: Date) => {
+                      const year = d.getFullYear();
+                      const month = String(d.getMonth() + 1).padStart(2, '0');
+                      const day = String(d.getDate()).padStart(2, '0');
+                      return `${year}-${month}-${day}`;
+                  };
+                  
+                  const newStartStr = formatDate(s);
+                  const newEndStr = formatDate(e);
+                  setBomaDates(prev => prev.filter(d => d >= newStartStr && d < newEndStr));
+
                   setSelectedRange({
                     start: s.getDate(),
                     end: e.getDate(),

@@ -21,6 +21,7 @@ const Admin = () => {
   const [currentMonth, setCurrentMonth] = useState(new Date(2025, 10)); // November 2025
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [maxCapacityLocal, setMaxCapacityLocal] = useState<number>(16);
+  const [calendarMode, setCalendarMode] = useState<"accommodation" | "boma">("accommodation");
 
   // Queries
   const settings = useQuery(api.availability.getSettings, {});
@@ -57,7 +58,7 @@ const Admin = () => {
     return Math.max(1, diff);
   };
 
-  const computeTotalCost = (checkIn: string, checkOut: string) => {
+  const computeTotalCost = (checkIn: string, checkOut: string, bomaDates?: string[]) => {
     if (!checkIn || !checkOut) return 0;
     const start = parseLocal(checkIn);
     const end = parseLocal(checkOut);
@@ -67,6 +68,9 @@ const Admin = () => {
       const dateStr = toISO(cur);
       total += isPeakSeason(dateStr) ? 8300 : 4600;
       cur.setDate(cur.getDate() + 1);
+    }
+    if (bomaDates && bomaDates.length > 0) {
+      total += bomaDates.length * 350;
     }
     return total;
   };
@@ -79,7 +83,7 @@ const Admin = () => {
   const setMaxCapacity = useMutation(api.availability.setMaxCapacity);
   const setDateAvailability = useMutation(api.availability.setDateAvailability);
 
-  const [adminKey, setAdminKeyLocal] = useState<string | null>(localStorage.getItem("adminKey"));
+  const [adminKey, setAdminKeyLocal] = useState<string | null>(localStorage.getItem("adminKey") || null);
 
   const isConfigured = useQuery(api.admin.isConfigured, {});
   const setAdminKeyMutation = useMutation(api.admin.setAdminKey);
@@ -255,17 +259,25 @@ const handleEditBooking = (booking: Doc<"bookings">) => {
 
   const handleBlockDate = async () => {
     if (selectedDate) {
-      await setDateAvailability({ date: selectedDate, available: 0, adminKey: adminKey ?? undefined });
-      toast.success("Date blocked");
+      if (calendarMode === "accommodation") {
+        await setDateAvailability({ date: selectedDate, available: 0, adminKey: adminKey ?? undefined });
+      } else {
+        await setDateAvailability({ date: selectedDate, bomaBlocked: true, adminKey: adminKey ?? undefined });
+      }
+      toast.success(`${calendarMode === "accommodation" ? "Accommodation" : "Boma"} blocked`);
       setIsCalendarDialogOpen(false);
     }
   };
 
   const handleUnblockDate = async () => {
     if (selectedDate) {
-      const max = maxCapacity;
-      await setDateAvailability({ date: selectedDate, available: max, adminKey: adminKey ?? undefined });
-      toast.success("Date unblocked");
+      if (calendarMode === "accommodation") {
+        const max = maxCapacity;
+        await setDateAvailability({ date: selectedDate, available: max, adminKey: adminKey ?? undefined });
+      } else {
+        await setDateAvailability({ date: selectedDate, bomaBlocked: false, adminKey: adminKey ?? undefined });
+      }
+      toast.success(`${calendarMode === "accommodation" ? "Accommodation" : "Boma"} unblocked`);
       setIsCalendarDialogOpen(false);
     }
   };
@@ -297,8 +309,10 @@ const handleEditBooking = (booking: Doc<"bookings">) => {
               />
               <Button
                 onClick={() => {
-                  if (adminKey) localStorage.setItem("adminKey", adminKey);
-                  toast.success("Admin key set locally");
+                  if (adminKey) {
+                    localStorage.setItem("adminKey", adminKey);
+                    toast.success("Admin key saved locally");
+                  }
                 }}
               >
                 Save
@@ -376,6 +390,22 @@ const handleEditBooking = (booking: Doc<"bookings">) => {
               <p className="text-sm text-muted-foreground mt-1">Click on any date to adjust availability</p>
             </div>
             <div className="flex items-center space-x-2">
+              <div className="bg-secondary rounded-lg p-1 flex text-sm">
+                <button
+                  onClick={() => setCalendarMode("accommodation")}
+                  className={`px-3 py-1.5 rounded-md transition-all ${calendarMode === "accommodation" ? "bg-background shadow text-foreground font-medium" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  Accommodation
+                </button>
+                <button
+                  onClick={() => setCalendarMode("boma")}
+                  className={`px-3 py-1.5 rounded-md transition-all ${calendarMode === "boma" ? "bg-background shadow text-orange-700 font-medium" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  Boma
+                </button>
+              </div>
+            </div>
+            <div className="flex items-center space-x-2">
               <Button variant="ghost" size="icon" className="rounded-full" onClick={handlePreviousMonth}>
                 <ChevronLeft className="h-5 w-5" />
               </Button>
@@ -409,21 +439,22 @@ const handleEditBooking = (booking: Doc<"bookings">) => {
               }
 
               const dateAvail = availability[day.date];
-              const isBlocked = dateAvail?.blocked || dateAvail?.available === 0;
+              const isAccommodationBlocked = dateAvail?.blocked || dateAvail?.available === 0;
+              const isBomaBlocked = dateAvail?.bomaBlocked;
+              const isBlocked = calendarMode === "accommodation" ? isAccommodationBlocked : isBomaBlocked;
+              const bgColor = isBlocked 
+                ? (calendarMode === "accommodation" ? "bg-unavailable" : "bg-orange-200")
+                : (calendarMode === "accommodation" ? "bg-available/30 hover:bg-available/50" : "bg-background border border-orange-100 hover:bg-orange-50");
 
               return (
                 <button
                   key={index}
                   onClick={() => handleDateClick(day.date)}
-                  className={`p-3 text-center rounded-lg transition-all hover:ring-2 hover:ring-primary ${
-                    isBlocked
-                      ? "bg-unavailable cursor-pointer"
-                      : "bg-available/30 hover:bg-available/50 cursor-pointer"
-                  }`}
+                  className={`p-3 text-center rounded-lg transition-all hover:ring-2 hover:ring-primary cursor-pointer ${bgColor}`}
                 >
                   <div className="font-semibold">{day.day}</div>
                   {isBlocked && (
-                    <div className="text-xs mt-1 text-destructive flex items-center justify-center">
+                    <div className={`text-xs mt-1 flex items-center justify-center ${calendarMode === "accommodation" ? "text-destructive" : "text-orange-700"}`}>
                       <Lock className="h-3 w-3" />
                     </div>
                   )}
@@ -434,14 +465,29 @@ const handleEditBooking = (booking: Doc<"bookings">) => {
 
           <div className="mt-6 pt-4 border-t border-border flex items-center justify-between text-sm">
             <div className="flex items-center gap-6">
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 rounded bg-available/30" />
-                <span>Available</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 rounded bg-unavailable" />
-                <span>Blocked</span>
-              </div>
+              {calendarMode === "accommodation" ? (
+                <>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 rounded bg-available/30" />
+                    <span>Available</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 rounded bg-unavailable" />
+                    <span>Blocked</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 rounded border border-orange-100 bg-background" />
+                    <span>Available</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 rounded bg-orange-200" />
+                    <span>Boma Booked/Blocked</span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -487,13 +533,20 @@ const handleEditBooking = (booking: Doc<"bookings">) => {
 filteredBookings.map((booking: Doc<"bookings">) => (
                     <TableRow key={booking._id}>
                       <TableCell className="font-medium">{booking.userName ?? "-"}</TableCell>
-                      <TableCell>{booking.bungalowNumber ?? "-"}</TableCell>
+                      <TableCell>
+                        {booking.bungalowNumber ?? "-"}
+                        {booking.bomaDates && booking.bomaDates.length > 0 && (
+                          <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800">
+                            +{booking.bomaDates.length} Boma
+                          </span>
+                        )}
+                      </TableCell>
                       <TableCell className="capitalize">{booking.userType ?? "-"}</TableCell>
                       <TableCell>{formatDDMMYYYY(booking.checkIn)}</TableCell>
                       <TableCell>{formatDDMMYYYY(booking.checkOut)}</TableCell>
                       <TableCell>
                         <div className="flex flex-col text-right">
-                          <span className="font-semibold text-hero-brown">R {computeTotalCost(booking.checkIn, booking.checkOut).toLocaleString()}</span>
+                          <span className="font-semibold text-hero-brown">R {computeTotalCost(booking.checkIn, booking.checkOut, booking.bomaDates).toLocaleString()}</span>
                           <span className="text-xs text-muted-foreground">{computeNights(booking.checkIn, booking.checkOut)} night(s)</span>
                         </div>
                       </TableCell>
@@ -578,18 +631,28 @@ filteredBookings.map((booking: Doc<"bookings">) => (
           <div className="space-y-4 py-2">
             {selectedDate && (
               <p className="text-sm text-muted-foreground">
-                {availability[selectedDate]?.blocked || availability[selectedDate]?.available === 0 ? "This date is currently blocked." : "This date is currently available."}
+                {(() => {
+                  const av = availability[selectedDate];
+                  if (calendarMode === "accommodation") {
+                    return (av?.blocked || av?.available === 0) ? "Accommodation is currently blocked." : "Accommodation is currently available.";
+                  } else {
+                    return av?.bomaBlocked ? "Boma is currently blocked." : "Boma is currently available.";
+                  }
+                })()}
               </p>
             )}
           </div>
           <DialogFooter className="flex-col sm:flex-row gap-2">
-            {selectedDate && (availability[selectedDate]?.blocked || availability[selectedDate]?.available === 0) ? (
+            {selectedDate && (
+              (calendarMode === "accommodation" && (availability[selectedDate]?.blocked || availability[selectedDate]?.available === 0)) ||
+              (calendarMode === "boma" && availability[selectedDate]?.bomaBlocked)
+            ) ? (
               <Button onClick={handleUnblockDate} className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white">
-                Unblock Date
+                Unblock {calendarMode === "accommodation" ? "Date" : "Boma"}
               </Button>
             ) : (
               <Button variant="destructive" onClick={handleBlockDate} className="w-full sm:w-auto">
-                <Lock className="h-4 w-4 mr-2" /> Block Date
+                <Lock className="h-4 w-4 mr-2" /> Block {calendarMode === "accommodation" ? "Date" : "Boma"}
               </Button>
             )}
             <Button variant="outline" onClick={() => setIsCalendarDialogOpen(false)} className="w-full sm:w-auto">

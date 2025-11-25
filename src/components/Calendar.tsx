@@ -23,9 +23,10 @@ type Props = {
   availabilityByDay?: Record<number, { available: number; seasonType?: "peak" | "offpeak" }>;
   maxCapacity?: number;
   onMonthChange?: (year: number, month: number) => void; // month 1-12
+  bomaCost?: number;
 };
 
-const Calendar = ({ selectedRange, onChangeSelectedRange, availabilityByDay = {}, maxCapacity = 16, onMonthChange }: Props) => {
+const Calendar = ({ selectedRange, onChangeSelectedRange, availabilityByDay = {}, maxCapacity = 16, onMonthChange, bomaCost = 0 }: Props) => {
   const today = new Date();
   const [currentDate, setCurrentDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   const [tempStart, setTempStart] = useState<Date | null>(null);
@@ -232,7 +233,8 @@ const Calendar = ({ selectedRange, onChangeSelectedRange, availabilityByDay = {}
     return total;
   };
   
-  const totalCost = calculateTotalCost();
+  const accommodationCost = calculateTotalCost();
+  const totalCost = accommodationCost + bomaCost;
 
   return (
     <div className="bg-card p-6 rounded-lg shadow-md w-full flex flex-col">
@@ -320,9 +322,16 @@ const Calendar = ({ selectedRange, onChangeSelectedRange, availabilityByDay = {}
             </div>
           </div>
           {totalCost > 0 && (
-            <div className="bg-hero-brown/10 px-4 py-2 rounded-lg">
-              <span className="text-sm text-muted-foreground">Total: </span>
-              <span className="text-xl font-bold text-hero-brown">R {totalCost.toLocaleString()}</span>
+            <div className="flex flex-col items-end">
+              {bomaCost > 0 && (
+                 <span className="text-xs text-muted-foreground mb-1">
+                   (Accommodation: R{accommodationCost.toLocaleString()} + Boma: R{bomaCost.toLocaleString()})
+                 </span>
+              )}
+              <div className="bg-hero-brown/10 px-4 py-2 rounded-lg">
+                <span className="text-sm text-muted-foreground">Total: </span>
+                <span className="text-xl font-bold text-hero-brown">R {totalCost.toLocaleString()}</span>
+              </div>
             </div>
           )}
         </div>

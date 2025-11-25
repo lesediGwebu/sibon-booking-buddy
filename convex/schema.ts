@@ -25,6 +25,7 @@ export default defineSchema({
     paymentRequestedAt: v.optional(v.number()),
     paymentReceivedAt: v.optional(v.number()),
     confirmedAt: v.optional(v.number()),
+    bomaDates: v.optional(v.array(v.string())),
   })
     .index("by_user", ["userId"]) // list my bookings
     .index("by_bungalow", ["bungalowNumber"]) // lookup by bungalow number
@@ -35,6 +36,7 @@ export default defineSchema({
     date: v.string(), // YYYY-MM-DD
     available: v.number(),
     blocked: v.boolean(),
+    bomaBlocked: v.optional(v.boolean()),
     seasonType: v.optional(v.union(v.literal("peak"), v.literal("offpeak"))), // Season pricing
   }).index("by_date", ["date"]),
 

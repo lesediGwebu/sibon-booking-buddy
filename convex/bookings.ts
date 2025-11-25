@@ -21,8 +21,9 @@ export const createBooking = mutation({
     notes: v.optional(v.string()),
     userEmail: v.optional(v.string()),
     userName: v.optional(v.string()),
+    bomaDates: v.optional(v.array(v.string())),
   },
-  handler: async (ctx, { checkIn, checkOut, bungalowNumber, userType, notes, userEmail, userName }) => {
+  handler: async (ctx, { checkIn, checkOut, bungalowNumber, userType, notes, userEmail, userName, bomaDates }) => {
     // Validate: Check if user already has a booking within 1 year cooldown
     const oneYearAgo = Date.now() - (365 * 24 * 60 * 60 * 1000);
     
@@ -65,6 +66,7 @@ export const createBooking = mutation({
       checkOut,
       status: "pending",
       notes,
+      bomaDates,
       createdAt,
     });
     return doc;
@@ -148,6 +150,32 @@ export const updateStatus = mutation({
           await ctx.db.patch(existing._id, { available: 0, blocked: true });
         } else {
           await ctx.db.insert("availability", { date: dateStr, available: 0, blocked: true });
+        }
+      }
+
+      // Also block Boma dates if present
+      if (booking.bomaDates && booking.bomaDates.length > 0) {
+        for (const dateStr of booking.bomaDates) {
+          const existing = await ctx.db
+            .query("availability")
+            .withIndex("by_date", (q) => q.eq("date", dateStr))
+            .unique();
+          if (existing) {
+            await ctx.db.patch(existing._id, { bomaBlocked: true });
+          } else {
+            // If availability record doesn't exist, create it with default available but blocked Boma
+            const settings = await ctx.db
+              .query("settings")
+              .withIndex("by_key", (q) => q.eq("key", "global"))
+              .unique();
+            const maxCapacity = settings?.value?.maxCapacity ?? 16;
+            await ctx.db.insert("availability", { 
+              date: dateStr, 
+              available: maxCapacity, 
+              blocked: false, 
+              bomaBlocked: true 
+            });
+          }
         }
       }
     }
